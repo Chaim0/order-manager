@@ -1,0 +1,721 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ICR Manager</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #f5f5f3;
+    --surface: #ffffff;
+    --surface2: #f1efe8;
+    --border: rgba(0,0,0,0.12);
+    --border2: rgba(0,0,0,0.22);
+    --text: #1a1a19;
+    --text2: #5f5e5a;
+    --text3: #888780;
+    --blue-bg: #e6f1fb;
+    --blue-text: #0c447c;
+    --blue-border: #185fa5;
+    --green-bg: #eaf3de;
+    --green-text: #3b6d11;
+    --amber-bg: #faeeda;
+    --amber-text: #854f0b;
+    --purple-bg: #eeedfe;
+    --purple-text: #3c3489;
+    --purple-border: #534ab7;
+    --red-bg: #fcebeb;
+    --red-text: #a32d2d;
+    --red-border: #e24b4a;
+    --radius: 8px;
+    --radius-lg: 12px;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #1c1c1a;
+      --surface: #2c2c2a;
+      --surface2: #242422;
+      --border: rgba(255,255,255,0.12);
+      --border2: rgba(255,255,255,0.22);
+      --text: #f0ede6;
+      --text2: #b4b2a9;
+      --text3: #888780;
+      --blue-bg: #0c447c;
+      --blue-text: #b5d4f4;
+      --blue-border: #378add;
+      --green-bg: #27500a;
+      --green-text: #c0dd97;
+      --amber-bg: #633806;
+      --amber-text: #fac775;
+      --purple-bg: #3c3489;
+      --purple-text: #cecbf6;
+      --purple-border: #7f77dd;
+      --red-bg: #791f1f;
+      --red-text: #f7c1c1;
+      --red-border: #e24b4a;
+    }
+  }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    font-size: 14px;
+    line-height: 1.5;
+  }
+
+  .app { max-width: 1200px; margin: 0 auto; padding: 24px 16px; }
+
+  h1 { font-size: 20px; font-weight: 500; margin-bottom: 20px; }
+
+  input[type="text"] {
+    background: var(--surface);
+    border: 0.5px solid var(--border2);
+    border-radius: var(--radius);
+    color: var(--text);
+    font-family: inherit;
+    font-size: 14px;
+    padding: 7px 12px;
+    outline: none;
+    transition: border-color 0.15s;
+  }
+  input[type="text"]:focus {
+    border-color: var(--blue-border);
+    box-shadow: 0 0 0 2px rgba(55,138,221,0.15);
+  }
+
+  button {
+    background: var(--surface);
+    border: 0.5px solid var(--border2);
+    border-radius: var(--radius);
+    color: var(--text);
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 500;
+    padding: 7px 14px;
+    transition: background 0.12s;
+    white-space: nowrap;
+  }
+  button:hover { background: var(--surface2); }
+  button:active { transform: scale(0.98); }
+  button.primary { background: var(--blue-bg); border-color: var(--blue-border); color: var(--blue-text); }
+  button.danger { background: var(--red-bg); border-color: var(--red-border); color: var(--red-text); }
+
+  .notice-box {
+    border-radius: var(--radius);
+    padding: 12px 14px;
+    margin-bottom: 12px;
+    font-size: 13px;
+    line-height: 1.6;
+  }
+  .notice-box.warning { background: var(--amber-bg); color: var(--amber-text); border: 0.5px solid var(--amber-text); }
+  .notice-box.danger  { background: var(--red-bg);   color: var(--red-text);   border: 0.5px solid var(--red-border); }
+  .notice-box.info    { background: var(--blue-bg);  color: var(--blue-text);  border: 0.5px solid var(--blue-border); }
+  .notice-box.success { background: var(--green-bg); color: var(--green-text); border: 0.5px solid var(--green-text); }
+
+  .import-hint {
+    background: var(--surface);
+    border: 0.5px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: 12px 16px;
+    margin-bottom: 16px;
+    font-size: 13px;
+    color: var(--text2);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+  .import-hint strong { color: var(--text); }
+
+  .stats-notices-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+  }
+  .stats-notices-row #notices {
+    flex: 1;
+    min-width: 200px;
+  }
+  .stats-notices-row #notices .notice-box {
+    margin-bottom: 6px;
+    padding: 8px 12px;
+    font-size: 12px;
+  }
+  .stats-notices-row #notices .notice-box:last-child { margin-bottom: 0; }
+  .stats-row { display: flex; gap: 10px; flex-wrap: wrap; flex-shrink: 0; }
+  .stat-card { background: var(--surface2); border-radius: var(--radius); padding: 10px 16px; min-width: 110px; }
+  .stat-card .label { font-size: 11px; color: var(--text3); text-transform: uppercase; letter-spacing: 0.05em; }
+  .stat-card .value { font-size: 22px; font-weight: 500; margin-top: 2px; }
+
+  .search-row { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
+  .search-row input { flex: 1; min-width: 180px; }
+
+  table { width: 100%; border-collapse: collapse; background: var(--surface); border-radius: var(--radius-lg); overflow: hidden; border: 0.5px solid var(--border); font-size: 13px; }
+  thead th { background: var(--surface2); padding: 10px 12px; text-align: left; font-weight: 500; color: var(--text2); font-size: 12px; border-bottom: 0.5px solid var(--border); white-space: nowrap; }
+  tbody tr { border-bottom: 0.5px solid var(--border); transition: background 0.1s; }
+  tbody tr:last-child { border-bottom: none; }
+  tbody tr:hover { background: var(--surface2); }
+  td { padding: 9px 12px; vertical-align: middle; }
+
+  .order-id {
+    font-family: monospace;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    user-select: none;
+    white-space: nowrap;
+  }
+  .order-id:hover { color: var(--blue-text); }
+  .order-id .copy-hint { font-size: 10px; color: var(--text3); margin-left: 4px; opacity: 0; transition: opacity 0.15s; }
+  tr:hover .order-id .copy-hint { opacity: 1; }
+
+  .badge { display: inline-block; border-radius: 4px; padding: 2px 7px; font-size: 11px; font-weight: 500; white-space: nowrap; }
+  .badge.yes { background: var(--green-bg); color: var(--green-text); }
+  .badge.no  { background: var(--surface2); color: var(--text3); }
+
+  .tags-cell { display: flex; gap: 4px; flex-wrap: wrap; align-items: center; min-height: 26px; }
+  .inline-tag-form { display: inline-flex; gap: 4px; align-items: center; }
+
+  .sku-tag {
+    background: var(--blue-bg); color: var(--blue-text);
+    border-radius: 4px; padding: 2px 7px; font-size: 11px; font-family: monospace;
+    cursor: pointer; border: none;
+  }
+  .sku-tag:hover { opacity: 0.75; }
+
+  .cnc-tag {
+    background: var(--purple-bg); color: var(--purple-text);
+    border-radius: 4px; padding: 2px 7px; font-size: 11px; font-family: monospace;
+    cursor: pointer; border: none;
+  }
+  .cnc-tag:hover { opacity: 0.75; }
+
+  .add-tag-btn {
+    background: none;
+    border: 0.5px dashed var(--border2);
+    border-radius: 4px;
+    color: var(--text3);
+    font-size: 11px;
+    padding: 2px 7px;
+    cursor: pointer;
+  }
+  .add-tag-btn:hover { border-color: var(--blue-border); color: var(--blue-text); }
+  .add-tag-btn.cnc:hover { border-color: var(--purple-border); color: var(--purple-text); }
+
+  .inline-input {
+    font-size: 12px; padding: 2px 6px; width: 100px; border-radius: 4px;
+    background: var(--surface); border: 0.5px solid var(--border2); color: var(--text);
+    font-family: monospace; outline: none;
+  }
+  .inline-input:focus { border-color: var(--blue-border); }
+
+  .remove-btn { background: none; border: none; color: var(--text3); cursor: pointer; font-size: 13px; padding: 2px 6px; border-radius: 4px; }
+  .remove-btn:hover { color: var(--red-text); background: var(--red-bg); }
+
+  .highlight { background: rgba(239,159,39,0.2); }
+  .copied-row { background: rgba(55,138,221,0.12); }
+  .copied-row:hover { background: rgba(55,138,221,0.18) !important; }
+  .archived-row { opacity: 0.55; }
+  .archived-id { color: var(--text3) !important; }
+
+  .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 100; align-items: center; justify-content: center; }
+  .modal-overlay.open { display: flex; }
+  .modal { background: var(--surface); border-radius: var(--radius-lg); border: 0.5px solid var(--border2); padding: 20px 24px; width: 90%; max-width: 440px; }
+  .modal h3 { font-size: 15px; font-weight: 500; margin-bottom: 12px; }
+  .modal p { font-size: 13px; color: var(--text2); margin-bottom: 14px; }
+  .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 14px; }
+
+  .empty-state { text-align: center; padding: 40px; color: var(--text3); font-size: 13px; }
+
+  #paste-status {
+    font-size: 12px;
+    color: var(--text3);
+    padding: 4px 0;
+    min-height: 20px;
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <h1>ICR Manager</h1>
+
+  <div class="import-hint">
+    <div>
+      <strong>Importing:</strong> paste anywhere on the page (not into a search field) to add to buffer.
+      When done pasting, click <strong>Commit import</strong>.
+    </div>
+    <div style="display:flex;gap:8px;align-items:center;margin-left:auto;">
+      <span id="paste-status"></span>
+      <button class="primary" onclick="commitImport()">Commit import</button>
+      <button onclick="clearBuffer()">Clear buffer</button>
+    </div>
+  </div>
+
+  <div class="stats-notices-row">
+    <div class="stats-row" id="stats-row"></div>
+    <div id="notices"></div>
+  </div>
+
+  <div class="search-row">
+    <input type="text" id="sku-search" placeholder="Search by SKU or CNC/CSA…" oninput="renderTable()" />
+    <input type="text" id="id-search" placeholder="Search by order ID…" oninput="renderTable()" />
+    <button onclick="clearSearch()">Clear search</button>
+    <button class="danger" onclick="confirmClearAll()">Clear all orders</button>
+  </div>
+
+  <div id="table-container"></div>
+</div>
+
+<div class="modal-overlay" id="modal-overlay">
+  <div class="modal">
+    <h3 id="modal-title"></h3>
+    <p id="modal-body"></p>
+    <div class="modal-actions" id="modal-actions"></div>
+  </div>
+</div>
+
+<script>
+const STORAGE_KEY = 'order_manager_v1';
+
+let orders = {};
+let buffer = [];
+
+const HISTORY_KEY = 'order_manager_history_v1';
+let history_orders = {}; // archived orders keyed by id
+let showHistory = false;
+
+function load() {
+  try {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    if (saved) orders = JSON.parse(saved);
+    for (const o of Object.values(orders)) {
+      if (!o.skus) o.skus = [];
+      if (!o.cncs) o.cncs = [];
+    }
+  } catch(e) { orders = {}; }
+  try {
+    const hist = localStorage.getItem(HISTORY_KEY);
+    if (hist) history_orders = JSON.parse(hist);
+  } catch(e) { history_orders = {}; }
+}
+
+function save() {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(orders));
+}
+
+function saveHistory() {
+  localStorage.setItem(HISTORY_KEY, JSON.stringify(history_orders));
+}
+
+function storageKB() {
+  const activeSize = JSON.stringify(orders).length;
+  const histSize = JSON.stringify(history_orders).length;
+  return ((activeSize + histSize) / 1024).toFixed(1);
+}
+
+function historyKB() {
+  return (JSON.stringify(history_orders).length / 1024).toFixed(1);
+}
+
+function parseRaw(raw) {
+  const cleaned = raw.replace(/[\u200B-\u200D\uFEFF]/g, '').replace(/\r/g, '');
+  const lines = cleaned.split('\n');
+  const result = [];
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+
+    // Date line comes AFTER its order row — assign to the last parsed order
+    if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+      if (result.length && !result[result.length - 1].date) {
+        result[result.length - 1].date = trimmed;
+      }
+      continue;
+    }
+
+    let id = null, qty = 0, hasCustomerOrders = false;
+
+    const cols = trimmed.split(/\t+/).map(c => c.trim()).filter(c => c);
+    if (cols.length >= 3) {
+      const idMatch = cols[0].match(/(?:_*)(ICR\d+)(?:_*)/i);
+      if (idMatch && cols[1] && cols[1].toLowerCase().includes('incoming')) {
+        id = idMatch[1];
+        qty = parseInt(cols[2]) || 0;
+        hasCustomerOrders = !!(cols[3] && cols[3].toLowerCase() === 'yes');
+      }
+    }
+
+    if (!id) {
+      const m = trimmed.match(/(?:_*)(ICR\d+)(?:_*)\s*Incoming\s*(\d+)\s*(Yes|No)/i);
+      if (m) {
+        id = m[1];
+        qty = parseInt(m[2]);
+        hasCustomerOrders = m[3].toLowerCase() === 'yes';
+      }
+    }
+
+    if (id) {
+      result.push({ id, qty, hasCustomerOrders, date: null });
+    }
+  }
+  return result;
+}
+
+// Global paste listener — fires when no input/textarea has focus
+document.addEventListener('paste', function(e) {
+  const active = document.activeElement;
+  const isField = active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA');
+  if (isField) return;
+
+  e.preventDefault();
+  const raw = (e.clipboardData || window.clipboardData).getData('text/plain');
+  if (!raw) return;
+
+  const parsed = parseRaw(raw);
+  if (!parsed.length) {
+    const preview = raw.split('\n').slice(0,3).map(l => `"${l.trim()}"`).join(', ');
+    showNotice(`No valid order lines found. First lines: ${preview}`, 'warning', 8000);
+    return;
+  }
+
+  for (const o of parsed) {
+    if (!buffer.find(b => b.id === o.id)) buffer.push(o);
+  }
+  updatePasteStatus();
+});
+
+function updatePasteStatus() {
+  document.getElementById('paste-status').textContent =
+    buffer.length ? `${buffer.length} order(s) in buffer` : '';
+}
+
+function commitImport() {
+  if (!buffer.length) {
+    showNotice('Buffer is empty — paste order data anywhere on the page first.', 'warning', 3000);
+    return;
+  }
+
+  const prevIds = new Set(Object.keys(orders));
+  const newIds = new Set(buffer.map(o => o.id));
+
+  const disappeared = [...prevIds].filter(id => !newIds.has(id));
+  const lostCustomerOrders = [...prevIds].filter(id => {
+    if (!newIds.has(id)) return false;
+    const prev = orders[id];
+    const next = buffer.find(b => b.id === id);
+    return prev.hasCustomerOrders && next && !next.hasCustomerOrders;
+  });
+
+  // Archive orders that disappeared
+  for (const id of disappeared) {
+    history_orders[id] = { ...orders[id], archivedAt: new Date().toISOString().slice(0,10) };
+    delete orders[id];
+  }
+  saveHistory();
+
+  for (const o of buffer) {
+    if (!orders[o.id]) {
+      orders[o.id] = { ...o, skus: [], cncs: [] };
+    } else {
+      orders[o.id].qty = o.qty;
+      orders[o.id].hasCustomerOrders = o.hasCustomerOrders;
+      if (o.date) orders[o.id].date = o.date;
+      if (!orders[o.id].cncs) orders[o.id].cncs = [];
+    }
+  }
+
+  buffer = [];
+  updatePasteStatus();
+  save();
+  renderAll();
+
+  const msgs = [];
+  if (disappeared.length) {
+    msgs.push({ type: 'info', label: 'Handled', text: `${disappeared.length} order(s) no longer visible (likely handled): ${disappeared.slice(0,10).join(', ')}${disappeared.length > 10 ? '…' : ''}` });
+  }
+  if (lostCustomerOrders.length) {
+    msgs.push({ type: 'warning', label: 'Lost customer-order flag', text: `${lostCustomerOrders.length} order(s): ${lostCustomerOrders.slice(0,10).join(', ')}${lostCustomerOrders.length > 10 ? '…' : ''}` });
+  }
+  if (!msgs.length) {
+    showNotice(`Import committed — ${Object.keys(orders).length} active orders.`, 'success', 4000);
+  } else {
+    const el = document.getElementById('notices');
+    el.innerHTML = '';
+    for (const m of msgs) {
+      const d = document.createElement('div');
+      d.className = `notice-box ${m.type}`;
+      d.innerHTML = `<strong>${m.label}:</strong> ${m.text}
+        <button style="float:right;background:none;border:none;cursor:pointer;font-size:16px;color:inherit;" onclick="this.parentElement.remove()">×</button>`;
+      el.appendChild(d);
+    }
+  }
+}
+
+function clearBuffer() {
+  buffer = [];
+  updatePasteStatus();
+}
+
+function renderStats() {
+  const all = Object.values(orders);
+  const withCustomer = all.filter(o => o.hasCustomerOrders).length;
+  const withSkus = all.filter(o => o.skus && o.skus.length).length;
+  const histCount = Object.keys(history_orders).length;
+  document.getElementById('stats-row').innerHTML = `
+    <div class="stat-card"><div class="label">Active orders</div><div class="value">${all.length}</div></div>
+    <div class="stat-card"><div class="label">With customer orders</div><div class="value">${withCustomer}</div></div>
+    <div class="stat-card"><div class="label">SKUs assigned</div><div class="value">${withSkus}</div></div>
+    <div class="stat-card" style="display:flex;flex-direction:column;gap:6px;padding:10px 14px;">
+      <div style="display:flex;align-items:center;gap:8px;">
+        <label style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;cursor:pointer;" for="hist-toggle">
+          History (${histCount}) — ${historyKB()} KB
+        </label>
+        <button id="hist-toggle" onclick="toggleHistory()" style="font-size:11px;padding:2px 8px;${showHistory ? 'background:var(--blue-bg);border-color:var(--blue-border);color:var(--blue-text);' : ''}">${showHistory ? 'On' : 'Off'}</button>
+        <button onclick="confirmClearHistory()" style="font-size:11px;padding:2px 8px;" title="Clear history">Clear</button>
+      </div>
+    </div>
+  `;
+}
+
+function renderTable() {
+  const skuQ = document.getElementById('sku-search').value.trim().toLowerCase();
+  const idQ  = document.getElementById('id-search').value.trim().toLowerCase();
+
+  let rows = Object.values(orders).map(o => ({ ...o, _archived: false }));
+  if (showHistory) {
+    const histRows = Object.values(history_orders).map(o => ({ ...o, _archived: true }));
+    rows = rows.concat(histRows);
+  }
+  if (skuQ) rows = rows.filter(o =>
+    (o.skus && o.skus.some(s => s.toLowerCase().includes(skuQ))) ||
+    (o.cncs && o.cncs.some(c => c.toLowerCase().includes(skuQ)))
+  );
+  if (idQ) rows = rows.filter(o => o.id.toLowerCase().includes(idQ));
+  rows.sort((a, b) => a.id.localeCompare(b.id));
+
+  const container = document.getElementById('table-container');
+  if (!rows.length) {
+    container.innerHTML = '<div class="empty-state">No orders match your search.</div>';
+    return;
+  }
+
+  const showArchCol = showHistory;
+  let html = `<table><thead><tr>
+    <th>Order ID</th><th>Qty</th><th>Customer orders</th><th>Date</th><th>SKUs</th><th>CNC / CSA</th>${showArchCol ? '<th>Archived</th>' : ''}<th></th>
+  </tr></thead><tbody>`;
+
+  for (const o of rows) {
+    const hlSku = skuQ && o.skus && o.skus.some(s => s.toLowerCase().includes(skuQ));
+    const hlCnc = skuQ && o.cncs && o.cncs.some(c => c.toLowerCase().includes(skuQ));
+    const hl = hlSku || hlCnc;
+
+    const skuHtml = (o.skus || []).map(s => {
+      const isMatch = skuQ && s.toLowerCase().includes(skuQ);
+      return `<button class="sku-tag${isMatch ? ' highlight' : ''}" title="Click to remove" onclick="removeTag('${o.id}','sku','${s}')">${s} ×</button>`;
+    }).join('');
+
+    const cncHtml = (o.cncs || []).map(c => {
+      const isMatch = skuQ && c.toLowerCase().includes(skuQ);
+      return `<button class="cnc-tag${isMatch ? ' highlight' : ''}" title="Click to remove" onclick="removeTag('${o.id}','cnc','${c}')">${c} ×</button>`;
+    }).join('');
+
+    const isCopied = o.id === copiedOrderId;
+    const rowClass = hl ? 'highlight' : isCopied ? 'copied-row' : o._archived ? 'archived-row' : '';
+    const skuControls = o._archived ? '' : `
+      <button class="add-tag-btn" onclick="startAddTag('${o.id}','sku')">+ SKU</button>
+      <span id="tag-input-sku-${o.id}" class="inline-tag-form" style="display:none;">
+        <input class="inline-input" type="text" id="tag-val-sku-${o.id}" placeholder="SKU"
+          onkeydown="tagKeydown(event,'${o.id}','sku')" />
+        <button style="font-size:11px;padding:2px 6px;" onclick="confirmAddTag('${o.id}','sku')">Add</button>
+        <button style="font-size:11px;padding:2px 6px;" onclick="cancelAddTag('${o.id}','sku')">×</button>
+      </span>`;
+    const cncControls = o._archived ? '' : `<button class="add-tag-btn cnc" onclick="addCncFromClipboard('${o.id}')">+ CNC/CSA</button>`;
+    const removeBtn = o._archived
+      ? `<button class="remove-btn" onclick="confirmDeleteArchived('${o.id}')" title="Delete from history">✕</button>`
+      : `<button class="remove-btn" onclick="confirmRemoveOrder('${o.id}')" title="Archive order">✕</button>`;
+    html += `<tr class="${rowClass}">
+      <td class="order-id${o._archived ? ' archived-id' : ''}" onclick="copyOrderId('${o.id}')" title="Click to copy">
+        ${o.id}<span class="copy-hint">copy</span>
+      </td>
+      <td>${o.qty}</td>
+      <td><span class="badge ${o.hasCustomerOrders ? 'yes' : 'no'}">${o.hasCustomerOrders ? 'Yes' : 'No'}</span></td>
+      <td style="color:var(--text3);font-size:12px;">${o.date || '—'}</td>
+      <td><div class="tags-cell">${skuHtml}${skuControls}</div></td>
+      <td><div class="tags-cell">${cncHtml}${cncControls}</div></td>
+      ${showArchCol ? `<td style="color:var(--text3);font-size:12px;">${o._archived ? (o.archivedAt || '—') : ''}</td>` : ''}
+      <td>${removeBtn}</td>
+    </tr>`;
+  }
+
+  html += '</tbody></table>';
+  container.innerHTML = html;
+}
+
+function toggleHistory() {
+  showHistory = !showHistory;
+  renderAll();
+}
+
+function confirmClearHistory() {
+  const count = Object.keys(history_orders).length;
+  showModal('Clear history?', `This will permanently delete ${count} archived orders (${historyKB()} KB). This cannot be undone.`, [
+    { label: 'Clear history', cls: 'danger', action: () => { history_orders = {}; saveHistory(); renderAll(); closeModal(); } },
+    { label: 'Cancel', cls: '', action: closeModal }
+  ]);
+}
+
+function renderAll() { renderStats(); renderTable(); }
+
+let copiedOrderId = null;
+
+async function copyOrderId(id) {
+  copiedOrderId = id;
+  try {
+    await navigator.clipboard.writeText(id);
+  } catch(e) {
+    const ta = document.createElement('textarea');
+    ta.value = id;
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand('copy');
+    document.body.removeChild(ta);
+  }
+  renderTable(); // re-render to apply highlight
+  showNotice(`Copied ${id} to clipboard`, 'info', 2000);
+}
+
+async function addCncFromClipboard(orderId) {
+  let text = '';
+  try {
+    text = await navigator.clipboard.readText();
+  } catch(e) {
+    showNotice('Could not read clipboard — browser may require a permission grant. Try clicking the page first.', 'warning', 5000);
+    return;
+  }
+  const m = text.trim().match(/((?:CNC|CSA)\d{8}[A-Z]?)/i);
+  if (!m) {
+    showNotice(`No CNC/CSA number found in clipboard. Got: "${text.trim().slice(0,40)}"`, 'warning', 5000);
+    return;
+  }
+  const val = m[1].toUpperCase();
+  if (!orders[orderId].cncs) orders[orderId].cncs = [];
+  if (!orders[orderId].cncs.includes(val)) {
+    orders[orderId].cncs.push(val);
+    save();
+    renderAll();
+    showNotice(`Added ${val} to ${orderId}`, 'success', 2500);
+  } else {
+    showNotice(`${val} already on this order`, 'info', 2500);
+  }
+}
+
+function startAddTag(id, type) {
+  const el = document.getElementById(`tag-input-${type}-${id}`);
+  el.style.display = 'inline-flex';
+  document.getElementById(`tag-val-${type}-${id}`).focus();
+}
+
+function cancelAddTag(id, type) {
+  document.getElementById(`tag-input-${type}-${id}`).style.display = 'none';
+  document.getElementById(`tag-val-${type}-${id}`).value = '';
+}
+
+function tagKeydown(e, id, type) {
+  if (e.key === 'Enter') confirmAddTag(id, type);
+  if (e.key === 'Escape') cancelAddTag(id, type);
+}
+
+function confirmAddTag(id, type) {
+  const val = document.getElementById(`tag-val-${type}-${id}`).value.trim().toUpperCase();
+  if (!val) return;
+  const field = type === 'sku' ? 'skus' : 'cncs';
+  if (!orders[id][field]) orders[id][field] = [];
+  if (!orders[id][field].includes(val)) {
+    orders[id][field].push(val);
+    save();
+  }
+  renderAll();
+}
+
+function removeTag(id, type, val) {
+  if (!orders[id]) return;
+  const field = type === 'sku' ? 'skus' : 'cncs';
+  orders[id][field] = (orders[id][field] || []).filter(v => v !== val);
+  save();
+  renderAll();
+}
+
+function confirmRemoveOrder(id) {
+  showModal(`Archive ${id}?`, 'This will move the order to history. You can view or delete it there later.', [
+    { label: 'Archive', cls: 'danger', action: () => {
+      history_orders[id] = { ...orders[id], archivedAt: new Date().toISOString().slice(0,10) };
+      delete orders[id];
+      save(); saveHistory(); renderAll(); closeModal();
+    }},
+    { label: 'Cancel', cls: '', action: closeModal }
+  ]);
+}
+
+function confirmDeleteArchived(id) {
+  showModal(`Delete ${id} from history?`, 'This will permanently delete this archived order.', [
+    { label: 'Delete', cls: 'danger', action: () => { delete history_orders[id]; saveHistory(); renderAll(); closeModal(); } },
+    { label: 'Cancel', cls: '', action: closeModal }
+  ]);
+}
+
+function confirmClearAll() {
+  showModal('Clear all orders?', `This will permanently delete all ${Object.keys(orders).length} active orders. This cannot be undone.`, [
+    { label: 'Clear all', cls: 'danger', action: () => { orders = {}; save(); renderAll(); closeModal(); } },
+    { label: 'Cancel', cls: '', action: closeModal }
+  ]);
+}
+
+function clearSearch() {
+  document.getElementById('sku-search').value = '';
+  document.getElementById('id-search').value = '';
+  renderTable();
+}
+
+function showModal(title, body, actions) {
+  document.getElementById('modal-title').textContent = title;
+  document.getElementById('modal-body').textContent = body;
+  const el = document.getElementById('modal-actions');
+  el.innerHTML = '';
+  for (const a of actions) {
+    const btn = document.createElement('button');
+    btn.textContent = a.label;
+    if (a.cls) btn.className = a.cls;
+    btn.onclick = a.action;
+    el.appendChild(btn);
+  }
+  document.getElementById('modal-overlay').classList.add('open');
+}
+
+function closeModal() { document.getElementById('modal-overlay').classList.remove('open'); }
+
+document.getElementById('modal-overlay').addEventListener('click', function(e) {
+  if (e.target === this) closeModal();
+});
+
+let noticeTimer = null;
+function showNotice(msg, type, ms) {
+  const el = document.getElementById('notices');
+  el.innerHTML = `<div class="notice-box ${type}">${msg}</div>`;
+  if (noticeTimer) clearTimeout(noticeTimer);
+  noticeTimer = setTimeout(() => { el.innerHTML = ''; }, ms || 4000);
+}
+
+load();
+renderAll();
+</script>
+</body>
+</html>
