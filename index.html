@@ -131,7 +131,7 @@
   .rcvd-display { font-size:12px; color:var(--text3); cursor:pointer; border-radius:4px; padding:1px 4px; display:inline-block; }
   .rcvd-display:hover { background:var(--surface2); color:var(--blue-text); }
   .rcvd-edit { display:none; gap:4px; align-items:center; }
-  .rcvd-edit input[type="date"] { font-size:11px; padding:2px 6px; width:130px; border-radius:4px; }
+  .rcvd-edit input[type="text"].rcvd-input { font-size:11px; padding:2px 6px; width:90px; border-radius:4px; font-family:monospace; }
 
   .remove-btn { background:none; border:none; color:var(--text3); cursor:pointer; font-size:13px; padding:2px 6px; border-radius:4px; }
   .remove-btn:hover { color:var(--red-text); background:var(--red-bg); }
@@ -658,7 +658,7 @@ function renderTable() {
         '<td class="rcvd-cell">' +
           '<span class="rcvd-display" id="rcvd-disp-' + o.id + '" onclick="startEditRcvd(\'' + o.id + '\')" title="Click to edit received date">' + displayVal + '</span>' +
           '<span class="rcvd-edit" id="rcvd-edit-' + o.id + '">' +
-            '<input type="date" id="rcvd-val-' + o.id + '" value="' + inputVal + '" onkeydown="rcvdKeydown(event,\'' + o.id + '\')">' +
+            '<input type="text" class="rcvd-input inline-input" id="rcvd-val-' + o.id + '" placeholder="YYYY-MM-DD" maxlength="10" onkeydown="rcvdKeydown(event,\'' + o.id + '\')">'  +
             '<button style="font-size:11px;padding:2px 6px;" onclick="confirmEditRcvd(\'' + o.id + '\')">Set</button>' +
             '<button style="font-size:11px;padding:2px 6px;" onclick="cancelEditRcvd(\'' + o.id + '\')">' + '\xd7' + '</button>' +
           '</span>' +
@@ -690,16 +690,27 @@ function startEditRcvd(id) {
   document.getElementById('rcvd-disp-' + id).style.display = 'none';
   const editEl = document.getElementById('rcvd-edit-' + id);
   editEl.style.display = 'inline-flex';
-  document.getElementById('rcvd-val-' + id).focus();
+  const inp = document.getElementById('rcvd-val-' + id);
+  // Pre-fill: existing date, or current YYYY-MM- as a typing prompt
+  const existing = orders[id] && orders[id].receivedDate;
+  const prefix = existing || (new Date().toISOString().slice(0, 7) + '-');
+  inp.value = prefix;
+  inp.focus();
+  inp.setSelectionRange(inp.value.length, inp.value.length);
 }
 function cancelEditRcvd(id) {
   document.getElementById('rcvd-edit-' + id).style.display = 'none';
   document.getElementById('rcvd-disp-' + id).style.display = '';
 }
 function confirmEditRcvd(id) {
-  const val = document.getElementById('rcvd-val-' + id).value;
-  if (!val) return;
-  orders[id].receivedDate = val;
+  const val = document.getElementById('rcvd-val-' + id).value.trim();
+  let normalized = val;
+  if (val && /^\d{8}$/.test(val)) normalized = val.slice(0,4) + '-' + val.slice(4,6) + '-' + val.slice(6,8);
+  if (normalized && !/^\d{4}-\d{2}-\d{2}$/.test(normalized)) {
+    showNotice('Date must be YYYY-MM-DD or 8 digits YYYYMMDD', 'warning', 4000);
+    return;
+  }
+  orders[id].receivedDate = normalized || null;
   save(); renderTable();
 }
 function rcvdKeydown(e, id) {
