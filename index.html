@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>ICR Manager</title>
+<title>ICR Manager v1.1.0</title>
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
   :root {
@@ -33,11 +33,11 @@
   .app { max-width:1200px; margin:0 auto; padding:24px 16px; }
   h1 { font-size:20px; font-weight:500; margin-bottom:20px; }
 
-  input[type="text"], select {
+  input[type="text"], input[type="date"], select {
     background:var(--surface); border:0.5px solid var(--border2); border-radius:var(--radius);
     color:var(--text); font-family:inherit; font-size:14px; padding:7px 12px; outline:none; transition:border-color .15s;
   }
-  input[type="text"]:focus, select:focus { border-color:var(--blue-border); box-shadow:0 0 0 2px rgba(55,138,221,.15); }
+  input[type="text"]:focus, input[type="date"]:focus, select:focus { border-color:var(--blue-border); box-shadow:0 0 0 2px rgba(55,138,221,.15); }
 
   button {
     background:var(--surface); border:0.5px solid var(--border2); border-radius:var(--radius);
@@ -124,6 +124,14 @@
 
   .inline-input { font-size:12px; padding:2px 6px; width:100px; border-radius:4px; background:var(--surface); border:0.5px solid var(--border2); color:var(--text); font-family:monospace; outline:none; }
   .inline-input:focus { border-color:var(--blue-border); }
+
+
+  /* Received date inline edit */
+  .rcvd-cell { white-space:nowrap; }
+  .rcvd-display { font-size:12px; color:var(--text3); cursor:pointer; border-radius:4px; padding:1px 4px; display:inline-block; }
+  .rcvd-display:hover { background:var(--surface2); color:var(--blue-text); }
+  .rcvd-edit { display:none; gap:4px; align-items:center; }
+  .rcvd-edit input[type="date"] { font-size:11px; padding:2px 6px; width:130px; border-radius:4px; }
 
   .remove-btn { background:none; border:none; color:var(--text3); cursor:pointer; font-size:13px; padding:2px 6px; border-radius:4px; }
   .remove-btn:hover { color:var(--red-text); background:var(--red-bg); }
@@ -218,6 +226,8 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script>
+const VERSION = 'v1.1.0';
+
 // ── Storage keys ──────────────────────────────────────────────────────────────
 const STORAGE_KEY  = 'order_manager_v1';
 const HISTORY_KEY  = 'order_manager_history_v1';
@@ -236,6 +246,13 @@ function load() {
   try { const s = localStorage.getItem(HISTORY_KEY);  if (s) history_orders = JSON.parse(s); } catch(e) { history_orders = {}; }
   for (const o of Object.values(orders))         { if (!o.skus) o.skus=[]; if (!o.cncs) o.cncs=[]; }
   for (const o of Object.values(history_orders)) { if (!o.skus) o.skus=[]; if (!o.cncs) o.cncs=[]; }
+
+  // Migration v1.1.0: strip hasCustomerOrders from history (meaningless after archiving)
+  let historyDirty = false;
+  for (const o of Object.values(history_orders)) {
+    if ('hasCustomerOrders' in o) { delete o.hasCustomerOrders; historyDirty = true; }
+  }
+  if (historyDirty) saveHistory();
 }
 function save()        { localStorage.setItem(STORAGE_KEY,  JSON.stringify(orders)); }
 function saveHistory() { localStorage.setItem(HISTORY_KEY,  JSON.stringify(history_orders)); }
@@ -523,19 +540,33 @@ function commitImport() {
     const next = buffer.find(function(b){ return b.id === id; });
     return orders[id].hasCustomerOrders && next && !next.hasCustomerOrders;
   });
+  const today = new Date().toISOString().slice(0, 10);
   for (const id of disappeared) {
-    history_orders[id] = Object.assign({}, orders[id], { archivedAt: new Date().toISOString().slice(0, 10) });
+    const archived = Object.assign({}, orders[id], { archivedAt: today });
+    delete archived.hasCustomerOrders;  // not meaningful outside the active portal view
+    history_orders[id] = archived;
     delete orders[id];
   }
   saveHistory();
   for (const o of buffer) {
     if (!orders[o.id]) {
-      orders[o.id] = Object.assign({}, o, { skus: [], cncs: [] });
+      // New order: back-fill skus/cncs from history if this ID was seen before
+      const hist = history_orders[o.id];
+      const mergedSkus = hist ? [...(hist.skus || [])] : [];
+      const mergedCncs = hist ? [...(hist.cncs || [])] : [];
+      orders[o.id] = Object.assign({}, o, {
+        skus: mergedSkus,
+        cncs: mergedCncs,
+        receivedDate: today  // stamped on first import; never overwritten
+      });
     } else {
+      // Existing order: update live fields, preserve tags and receivedDate
       orders[o.id].qty = o.qty;
       orders[o.id].hasCustomerOrders = o.hasCustomerOrders;
       if (o.date) orders[o.id].date = o.date;
       if (!orders[o.id].cncs) orders[o.id].cncs = [];
+      if (!orders[o.id].skus) orders[o.id].skus = [];
+      // receivedDate intentionally not touched
     }
   }
   buffer = []; updatePasteStatus(); save(); renderAll();
@@ -590,7 +621,7 @@ function renderTable() {
   const container = document.getElementById('table-container');
   if (!rows.length) { container.innerHTML = '<div class="empty-state">No orders match your search.</div>'; return; }
 
-  let html = '<table><thead><tr><th>Order ID</th><th>Qty</th><th>Customer orders</th><th>Date</th><th>SKUs</th><th>CNC / CSA</th>' + (showHistory ? '<th>Archived</th>' : '') + '<th></th></tr></thead><tbody>';
+  let html = '<table><thead><tr><th>Order ID</th><th>Qty</th><th>Customer orders</th><th>Date</th><th>Rcvd</th><th>SKUs</th><th>CNC / CSA</th>' + (showHistory ? '<th>Archived</th>' : '') + '<th></th></tr></thead><tbody>';
 
   rows.forEach(function(o) {
     const hlSku = skuQ && o.skus && o.skus.some(function(s){ return s.toLowerCase().includes(skuQ); });
@@ -616,11 +647,30 @@ function renderTable() {
       ? '<button class="remove-btn" onclick="confirmDeleteArchived(\'' + o.id + '\')" title="Delete from history">\u2715</button>'
       : '<button class="remove-btn" onclick="confirmRemoveOrder(\'' + o.id + '\')" title="Archive order">\u2715</button>';
 
+    // Received date cell: click-to-edit for active orders, read-only for archived
+    let rcvdCell;
+    if (o._archived) {
+      rcvdCell = '<td class="rcvd-cell" style="color:var(--text3);font-size:12px;">' + (o.receivedDate || '\u2014') + '</td>';
+    } else {
+      const displayVal = o.receivedDate || '\u2014';
+      const inputVal   = o.receivedDate || '';
+      rcvdCell =
+        '<td class="rcvd-cell">' +
+          '<span class="rcvd-display" id="rcvd-disp-' + o.id + '" onclick="startEditRcvd(\'' + o.id + '\')" title="Click to edit received date">' + displayVal + '</span>' +
+          '<span class="rcvd-edit" id="rcvd-edit-' + o.id + '">' +
+            '<input type="date" id="rcvd-val-' + o.id + '" value="' + inputVal + '" onkeydown="rcvdKeydown(event,\'' + o.id + '\')">' +
+            '<button style="font-size:11px;padding:2px 6px;" onclick="confirmEditRcvd(\'' + o.id + '\')">Set</button>' +
+            '<button style="font-size:11px;padding:2px 6px;" onclick="cancelEditRcvd(\'' + o.id + '\')">' + '\xd7' + '</button>' +
+          '</span>' +
+        '</td>';
+    }
+
     html += '<tr class="' + rowClass + '">' +
       '<td class="order-id' + (o._archived ? ' archived-id' : '') + '" onclick="copyOrderId(\'' + o.id + '\')" title="Click to copy">' + o.id + '<span class="copy-hint">copy</span></td>' +
       '<td>' + o.qty + '</td>' +
       '<td><span class="badge ' + (o.hasCustomerOrders ? 'yes' : 'no') + '">' + (o.hasCustomerOrders ? 'Yes' : 'No') + '</span></td>' +
       '<td style="color:var(--text3);font-size:12px;">' + (o.date || '\u2014') + '</td>' +
+      rcvdCell +
       '<td><div class="tags-cell">' + skuTags + skuInput + '</div></td>' +
       '<td><div class="tags-cell">' + cncTags + cncInput + '</div></td>' +
       (showHistory ? '<td style="color:var(--text3);font-size:12px;">' + (o._archived ? (o.archivedAt || '\u2014') : '') + '</td>' : '') +
@@ -634,6 +684,28 @@ function renderTable() {
 function renderAll() { renderStats(); renderTable(); }
 
 function toggleHistory() { showHistory = !showHistory; renderAll(); }
+
+// ── Received date inline edit ─────────────────────────────────────────────────
+function startEditRcvd(id) {
+  document.getElementById('rcvd-disp-' + id).style.display = 'none';
+  const editEl = document.getElementById('rcvd-edit-' + id);
+  editEl.style.display = 'inline-flex';
+  document.getElementById('rcvd-val-' + id).focus();
+}
+function cancelEditRcvd(id) {
+  document.getElementById('rcvd-edit-' + id).style.display = 'none';
+  document.getElementById('rcvd-disp-' + id).style.display = '';
+}
+function confirmEditRcvd(id) {
+  const val = document.getElementById('rcvd-val-' + id).value;
+  if (!val) return;
+  orders[id].receivedDate = val;
+  save(); renderTable();
+}
+function rcvdKeydown(e, id) {
+  if (e.key === 'Enter')  confirmEditRcvd(id);
+  if (e.key === 'Escape') cancelEditRcvd(id);
+}
 
 // ── Tag / SKU / CNC actions ───────────────────────────────────────────────────
 function startAddTag(id, type) {
@@ -687,7 +759,9 @@ async function copyOrderId(id) {
 function confirmRemoveOrder(id) {
   showModal('Archive ' + id + '?', 'Move to history. You can view or delete it there.', [
     { label: 'Archive', cls: 'danger', action: function() {
-      history_orders[id] = Object.assign({}, orders[id], { archivedAt: new Date().toISOString().slice(0,10) });
+      const archived = Object.assign({}, orders[id], { archivedAt: new Date().toISOString().slice(0,10) });
+      delete archived.hasCustomerOrders;  // not meaningful outside the active portal view
+      history_orders[id] = archived;
       delete orders[id]; save(); saveHistory(); renderAll(); closeModal();
     }},
     { label: 'Cancel', cls: '', action: closeModal }
