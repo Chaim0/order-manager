@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>ICR Manager v1.1.0</title>
+<title>ICR Manager v1.2.0</title>
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
   :root {
@@ -125,7 +125,6 @@
   .inline-input { font-size:12px; padding:2px 6px; width:100px; border-radius:4px; background:var(--surface); border:0.5px solid var(--border2); color:var(--text); font-family:monospace; outline:none; }
   .inline-input:focus { border-color:var(--blue-border); }
 
-
   /* Received date inline edit */
   .rcvd-cell { white-space:nowrap; }
   .rcvd-display { font-size:12px; color:var(--text3); cursor:pointer; border-radius:4px; padding:1px 4px; display:inline-block; }
@@ -226,7 +225,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script>
-const VERSION = 'v1.1.0';
+const VERSION = 'v1.2.0';
 
 // ── Storage keys ──────────────────────────────────────────────────────────────
 const STORAGE_KEY  = 'order_manager_v1';
@@ -476,6 +475,72 @@ function doImport() {
   }
 }
 
+// ── Date normalisation ────────────────────────────────────────────────────────
+// Coerces regional date formats to ISO 8601 (YYYY-MM-DD).
+// Handles: YYYY-MM-DD (pass-through), DD.MM.YYYY, DD/MM/YYYY, MM/DD/YYYY,
+//          YYYYMMDD (8 compact digits), and single-digit day/month variants.
+// Returns null for anything that cannot be confidently resolved to a valid date.
+function normalizeDate(raw) {
+  if (!raw) return null;
+  const s = raw.trim();
+  if (!s) return null;
+
+  // Already ISO: YYYY-MM-DD
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
+    return isValidISODate(s) ? s : null;
+  }
+
+  // Compact 8-digit: YYYYMMDD
+  if (/^\d{8}$/.test(s)) {
+    const iso = s.slice(0,4) + '-' + s.slice(4,6) + '-' + s.slice(6,8);
+    return isValidISODate(iso) ? iso : null;
+  }
+
+  // DD.MM.YYYY or D.M.YYYY — dot separator is unambiguously day-first
+  const dotMatch = s.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/);
+  if (dotMatch) {
+    const iso = dotMatch[3] + '-' + pad2(dotMatch[2]) + '-' + pad2(dotMatch[1]);
+    return isValidISODate(iso) ? iso : null;
+  }
+
+  // Slash separator: DD/MM/YYYY or MM/DD/YYYY
+  // Disambiguate: if the first part is > 12 it must be the day.
+  // If both parts are <= 12 (ambiguous), default to DD/MM (European warehouse context).
+  const slashMatch = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (slashMatch) {
+    const a = parseInt(slashMatch[1], 10);
+    const b = parseInt(slashMatch[2], 10);
+    const y = slashMatch[3];
+    let day, month;
+    if (a > 12) {
+      // First part must be day
+      day = a; month = b;
+    } else if (b > 12) {
+      // Second part must be day, so first is month (MM/DD)
+      day = b; month = a;
+    } else {
+      // Ambiguous — default to DD/MM (European)
+      day = a; month = b;
+    }
+    const iso = y + '-' + pad2(month) + '-' + pad2(day);
+    return isValidISODate(iso) ? iso : null;
+  }
+
+  return null;
+}
+
+function pad2(n) { return String(n).padStart(2, '0'); }
+
+function isValidISODate(iso) {
+  const parts = iso.split('-');
+  if (parts.length !== 3) return false;
+  const y = parseInt(parts[0], 10), m = parseInt(parts[1], 10), d = parseInt(parts[2], 10);
+  if (!y || !m || !d) return false;
+  if (m < 1 || m > 12 || d < 1 || d > 31) return false;
+  const dt = new Date(y, m - 1, d);
+  return dt.getFullYear() === y && dt.getMonth() === m - 1 && dt.getDate() === d;
+}
+
 // ── ICR order paste parsing ───────────────────────────────────────────────────
 function parseRaw(raw) {
   const cleaned = raw.replace(/[\u200B-\u200D\uFEFF]/g, '').replace(/\r/g, '');
@@ -484,10 +549,15 @@ function parseRaw(raw) {
   for (const line of lines) {
     const trimmed = line.trim();
     if (!trimmed) continue;
-    if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
-      if (result.length && !result[result.length - 1].date) result[result.length - 1].date = trimmed;
+
+    // Date line: try to normalise any regional format to ISO.
+    // If it resolves to a valid date and we have a preceding order without a date, attach it.
+    const asDate = normalizeDate(trimmed);
+    if (asDate) {
+      if (result.length && !result[result.length - 1].date) result[result.length - 1].date = asDate;
       continue;
     }
+
     let id = null, qty = 0, hasCustomerOrders = false;
     const cols = trimmed.split(/\t+/).map(function(c){ return c.trim(); }).filter(Boolean);
     if (cols.length >= 3) {
@@ -560,10 +630,12 @@ function commitImport() {
         receivedDate: today  // stamped on first import; never overwritten
       });
     } else {
-      // Existing order: update live fields, preserve tags and receivedDate
+      // Existing order: update live fields, preserve tags and receivedDate.
+      // Date rule: only write date if the incoming paste has one AND we don't already have one.
+      // Once a date is set it is never cleared or overwritten by a re-import.
       orders[o.id].qty = o.qty;
       orders[o.id].hasCustomerOrders = o.hasCustomerOrders;
-      if (o.date) orders[o.id].date = o.date;
+      if (o.date && !orders[o.id].date) orders[o.id].date = o.date;
       if (!orders[o.id].cncs) orders[o.id].cncs = [];
       if (!orders[o.id].skus) orders[o.id].skus = [];
       // receivedDate intentionally not touched
@@ -621,7 +693,10 @@ function renderTable() {
   const container = document.getElementById('table-container');
   if (!rows.length) { container.innerHTML = '<div class="empty-state">No orders match your search.</div>'; return; }
 
-  let html = '<table><thead><tr><th>Order ID</th><th>Qty</th><th>Customer orders</th><th>Date</th><th>Rcvd</th><th>SKUs</th><th>CNC / CSA</th>' + (showHistory ? '<th>Archived</th>' : '') + '<th></th></tr></thead><tbody>';
+  let html = '<table><thead><tr>' +
+    '<th>Order ID</th><th>Qty</th><th>Customer orders</th><th>Date</th><th>Rcvd</th><th>SKUs</th><th>CNC / CSA</th>' +
+    (showHistory ? '<th style="color:var(--text3);font-weight:400;">Archived</th>' : '') +
+    '<th></th></tr></thead><tbody>';
 
   rows.forEach(function(o) {
     const hlSku = skuQ && o.skus && o.skus.some(function(s){ return s.toLowerCase().includes(skuQ); });
@@ -653,7 +728,6 @@ function renderTable() {
       rcvdCell = '<td class="rcvd-cell" style="color:var(--text3);font-size:12px;">' + (o.receivedDate || '\u2014') + '</td>';
     } else {
       const displayVal = o.receivedDate || '\u2014';
-      const inputVal   = o.receivedDate || '';
       rcvdCell =
         '<td class="rcvd-cell">' +
           '<span class="rcvd-display" id="rcvd-disp-' + o.id + '" onclick="startEditRcvd(\'' + o.id + '\')" title="Click to edit received date">' + displayVal + '</span>' +
@@ -691,7 +765,6 @@ function startEditRcvd(id) {
   const editEl = document.getElementById('rcvd-edit-' + id);
   editEl.style.display = 'inline-flex';
   const inp = document.getElementById('rcvd-val-' + id);
-  // Pre-fill: existing date, or current YYYY-MM- as a typing prompt
   const existing = orders[id] && orders[id].receivedDate;
   const prefix = existing || (new Date().toISOString().slice(0, 7) + '-');
   inp.value = prefix;
@@ -704,10 +777,9 @@ function cancelEditRcvd(id) {
 }
 function confirmEditRcvd(id) {
   const val = document.getElementById('rcvd-val-' + id).value.trim();
-  let normalized = val;
-  if (val && /^\d{8}$/.test(val)) normalized = val.slice(0,4) + '-' + val.slice(4,6) + '-' + val.slice(6,8);
-  if (normalized && !/^\d{4}-\d{2}-\d{2}$/.test(normalized)) {
-    showNotice('Date must be YYYY-MM-DD or 8 digits YYYYMMDD', 'warning', 4000);
+  const normalized = normalizeDate(val);
+  if (val && !normalized) {
+    showNotice('Date must be YYYY-MM-DD, DD.MM.YYYY, DD/MM/YYYY, or 8 digits YYYYMMDD', 'warning', 4000);
     return;
   }
   orders[id].receivedDate = normalized || null;
@@ -771,7 +843,7 @@ function confirmRemoveOrder(id) {
   showModal('Archive ' + id + '?', 'Move to history. You can view or delete it there.', [
     { label: 'Archive', cls: 'danger', action: function() {
       const archived = Object.assign({}, orders[id], { archivedAt: new Date().toISOString().slice(0,10) });
-      delete archived.hasCustomerOrders;  // not meaningful outside the active portal view
+      delete archived.hasCustomerOrders;
       history_orders[id] = archived;
       delete orders[id]; save(); saveHistory(); renderAll(); closeModal();
     }},
