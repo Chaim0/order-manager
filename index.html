@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>ICR Manager v1.4.0</title>
+<title>ICR Manager v1.5.4</title>
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
   :root {
@@ -106,7 +106,7 @@
   }
   table {
     width:100%;
-    min-width:900px;          /* prevents squish before h-scroll kicks in */
+    min-width:820px;          /* prevents squish before h-scroll kicks in */
     border-collapse:collapse;
     background:var(--surface);
     font-size:13px;
@@ -115,23 +115,24 @@
 
   /* ── Column widths ─────────────────────────────────────────────────────────
      ICR IDs are always 9 chars (ICR + 6 digits). Qty ≤ 4 digits.
-     SKU col holds 4 tags (~56px each) + add btn; wraps inside.
-     CNC col holds 1 tag (~140px) + add btn.
-     Rcvd col holds the inline edit (90px input + 2 small btns).
+     SKU col sized for filter badge + 4 tags wrapping inside.
+     CNC col holds tags only; add btn shown on selected row below tags.
+     Rcvd/CNCdate cols sized for YYYY-MM-DD + × glyph.
   */
-  col.c-id       { width:118px; }
+  col.c-id       { width:100px; }
   col.c-qty      { width:58px; }
-  col.c-custord  { width:116px; }
-  col.c-date     { width:100px; }
-  col.c-rcvd     { width:196px; }
+  col.c-custord  { width:56px; }
+  col.c-date     { width:96px; }
+  col.c-rcvd     { width:116px; }
   col.c-skus     { width:290px; }
-  col.c-cnc      { width:220px; }
-  col.c-archived { width:100px; }
-  col.c-action   { width:40px; }
+  col.c-cnc      { width:160px; }
+  col.c-cncdate  { width:116px; }
+  col.c-archived { width:96px; }
+  col.c-action   { width:36px; }
 
   thead th {
     background:var(--surface2);
-    padding:10px 12px;
+    padding:8px 10px;
     text-align:left;
     font-weight:500;
     color:var(--text2);
@@ -170,13 +171,11 @@
   tbody tr { border-bottom:0.5px solid var(--border); transition:background .1s; }
   tbody tr:last-child { border-bottom:none; }
   tbody tr:hover { background:var(--surface2); }
-  td { padding:9px 12px; vertical-align:top; overflow:hidden; }
+  td { padding:7px 10px; vertical-align:top; overflow:hidden; }
 
   /* Order ID cell */
-  .order-id { font-family:monospace; font-size:12px; font-weight:500; cursor:pointer; user-select:none; white-space:nowrap; }
+  .order-id { font-family:monospace; font-size:16px; font-weight:500; cursor:pointer; user-select:none; white-space:nowrap; }
   .order-id:hover { color:var(--blue-text); }
-  .copy-hint { font-size:10px; color:var(--text3); margin-left:4px; opacity:0; transition:opacity .15s; }
-  tr:hover .copy-hint { opacity:1; }
 
   .badge { display:inline-block; border-radius:4px; padding:2px 7px; font-size:11px; font-weight:500; white-space:nowrap; }
   .badge.yes { background:var(--green-bg); color:var(--green-text); }
@@ -186,40 +185,47 @@
   .tags-cell { display:flex; gap:4px; flex-wrap:wrap; align-items:flex-start; min-height:22px; }
   .inline-tag-form { display:inline-flex; gap:4px; align-items:center; flex-shrink:0; }
 
-  .sku-tag { display:inline-flex; align-items:center; background:var(--blue-bg); color:var(--blue-text); border-radius:4px; font-size:11px; font-family:monospace; border:none; white-space:nowrap; overflow:hidden; }
+  .sku-tag { display:inline-flex; align-items:center; background:var(--blue-bg); color:var(--blue-text); border-radius:4px; font-size:14px; font-family:monospace; border:none; white-space:nowrap; overflow:hidden; }
   .sku-tag .tag-label { padding:2px 5px 2px 7px; cursor:pointer; }
   .sku-tag .tag-label:hover { opacity:.75; }
   .sku-tag .tag-remove { padding:2px 5px 2px 3px; cursor:pointer; opacity:.5; font-size:10px; line-height:1; }
   .sku-tag .tag-remove:hover { opacity:1; background:rgba(0,0,0,.12); }
-  .cnc-tag { display:inline-flex; align-items:center; background:var(--purple-bg); color:var(--purple-text); border-radius:4px; font-size:11px; font-family:monospace; border:none; white-space:nowrap; overflow:hidden; }
+  .cnc-tag { display:inline-flex; align-items:center; background:var(--purple-bg); color:var(--purple-text); border-radius:4px; font-size:14px; font-family:monospace; border:none; white-space:nowrap; overflow:hidden; }
   .cnc-tag .tag-label { padding:2px 5px 2px 7px; cursor:pointer; }
   .cnc-tag .tag-label:hover { opacity:.75; }
   .cnc-tag .tag-remove { padding:2px 5px 2px 3px; cursor:pointer; opacity:.5; font-size:10px; line-height:1; }
   .cnc-tag .tag-remove:hover { opacity:1; background:rgba(0,0,0,.12); }
 
-  .add-tag-btn { background:none; border:0.5px dashed var(--border2); border-radius:4px; color:var(--text3); font-size:11px; padding:2px 7px; cursor:pointer; white-space:nowrap; flex-shrink:0; }
+  .add-tag-btn { background:none; border:0.5px dashed var(--border2); border-radius:4px; color:var(--text3); font-size:11px; padding:2px 7px; cursor:pointer; white-space:nowrap; flex-shrink:0; display:none; }
   .add-tag-btn:hover { border-color:var(--blue-border); color:var(--blue-text); }
   .add-tag-btn.cnc:hover { border-color:var(--purple-border); color:var(--purple-text); }
+  /* CNC add-btn wrap: hidden until row is selected */
+  .cnc-add-wrap { display:none; margin-top:2px; }
+  /* CNC tags-cell: column so tags stack above the add row */
+  .cnc-tags-cell { display:flex; flex-direction:column; gap:3px; align-items:flex-start; min-height:22px; }
 
-  .inline-input { font-size:12px; padding:2px 6px; width:96px; border-radius:4px; background:var(--surface); border:0.5px solid var(--border2); color:var(--text); font-family:monospace; outline:none; flex-shrink:0; }
+  .inline-input { font-size:13px; padding:2px 6px; width:96px; border-radius:4px; background:var(--surface); border:0.5px solid var(--border2); color:var(--text); font-family:monospace; outline:none; flex-shrink:0; }
   .inline-input:focus { border-color:var(--blue-border); }
 
   /* Received date cell */
-  .rcvd-cell { white-space:nowrap; }
-  .rcvd-display { font-size:12px; color:var(--text3); cursor:pointer; border-radius:4px; padding:1px 4px; display:inline-block; }
+  .rcvd-cell { white-space:nowrap; overflow:visible; }
+  .rcvd-display { font-size:13px; color:var(--text3); cursor:pointer; border-radius:4px; padding:1px 3px; display:inline-block; }
   .rcvd-display:hover { background:var(--surface2); color:var(--blue-text); }
-  .rcvd-edit { display:none; gap:4px; align-items:center; flex-wrap:nowrap; }
-  .rcvd-edit input[type="text"].rcvd-input { font-size:11px; padding:2px 6px; width:90px; border-radius:4px; font-family:monospace; }
+  .rcvd-edit { display:none; gap:3px; align-items:center; flex-wrap:nowrap; position:relative; z-index:1; }
+  .rcvd-edit input[type="text"].rcvd-input { font-size:13px; padding:2px 5px; width:88px; border-radius:4px; font-family:monospace; }
 
   .remove-btn { background:none; border:none; color:var(--text3); cursor:pointer; font-size:13px; padding:2px 4px; border-radius:4px; }
   .remove-btn:hover { color:var(--red-text); background:var(--red-bg); }
 
   /* Row states */
-  .highlight    { background:rgba(239,159,39,0.2); }
-  .copied-row   { background:rgba(55,138,221,0.12); }
-  .copied-row:hover { background:rgba(55,138,221,0.18) !important; }
-  .archived-row { opacity:.55; }
-  .archived-id  { color:var(--text3) !important; }
+  .highlight      { background:rgba(239,159,39,0.2); }
+  .selected-row   { background:rgba(55,138,221,0.12); }
+  .selected-row:hover { background:rgba(55,138,221,0.18) !important; }
+  .archived-row   { opacity:.55; }
+  .archived-id    { color:var(--text3) !important; }
+  /* Show add buttons only on the selected row */
+  .selected-row .add-tag-btn { display:inline-block; }
+  .selected-row .cnc-add-wrap { display:flex; }
 
   /* Empty state inside tbody */
   .empty-row td { padding:40px 12px; text-align:center; color:var(--text3); font-size:13px; }
@@ -307,7 +313,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script>
-const VERSION = 'v1.4.0';
+const VERSION = 'v1.5.4';
 
 // ── Storage keys ──────────────────────────────────────────────────────────────
 const STORAGE_KEY  = 'order_manager_v1';
@@ -665,18 +671,19 @@ function renderTable() {
 
   const qtyActive = qtyFilter!=='all', skuActive=skuFilter!=='all', ageActive=ageFilter!=='all';
   const colsHtml = showHistory
-    ? '<col class="c-id"><col class="c-qty"><col class="c-custord"><col class="c-date"><col class="c-rcvd"><col class="c-skus"><col class="c-cnc"><col class="c-archived"><col class="c-action">'
-    : '<col class="c-id"><col class="c-qty"><col class="c-custord"><col class="c-date"><col class="c-rcvd"><col class="c-skus"><col class="c-cnc"><col class="c-action">';
-  const totalCols = showHistory ? 9 : 8;
+    ? '<col class="c-id"><col class="c-qty"><col class="c-custord"><col class="c-date"><col class="c-rcvd"><col class="c-skus"><col class="c-cnc"><col class="c-cncdate"><col class="c-archived"><col class="c-action">'
+    : '<col class="c-id"><col class="c-qty"><col class="c-custord"><col class="c-date"><col class="c-rcvd"><col class="c-skus"><col class="c-cnc"><col class="c-cncdate"><col class="c-action">';
+  const totalCols = showHistory ? 10 : 9;
 
   let html = '<div class="table-wrap"><table>'+colsHtml+'<thead><tr>'+
     '<th>Order ID</th>'+
     thHtml(qtyActive ? '' : 'Qty', QTY_BADGES[qtyFilter], 'qty', qtyActive)+
-    '<th>Customer orders</th>'+
+    '<th>Order</th>'+
     '<th>Date</th>'+
     thHtml('Rcvd', AGE_BADGES[ageFilter], 'age', ageActive)+
     thHtml('SKUs', SKU_BADGES[skuFilter], 'sku', skuActive)+
     '<th>CNC / CSA</th>'+
+    '<th>CNC date</th>'+
     (showHistory ? '<th style="color:var(--text3);font-weight:400;">Archived</th>' : '')+
     '<th></th></tr></thead><tbody>';
 
@@ -686,7 +693,7 @@ function renderTable() {
     rows.forEach(function(o) {
       const hlSku = skuQ&&o.skus&&o.skus.some(function(s){ return s.toLowerCase().includes(skuQ); });
       const hlCnc = skuQ&&o.cncs&&o.cncs.some(function(c){ return c.toLowerCase().includes(skuQ); });
-      const rowClass = (hlSku||hlCnc)?'highlight':(o.id===copiedOrderId)?'copied-row':o._archived?'archived-row':'';
+      const rowClass = (hlSku||hlCnc)?'highlight':(o.id===copiedOrderId)?'selected-row':o._archived?'archived-row':'';
 
       const skuTags = (o.skus||[]).map(function(s){
         const hl = skuQ&&s.toLowerCase().includes(skuQ)?' highlight':'';
@@ -710,7 +717,10 @@ function renderTable() {
           '<button style="font-size:11px;padding:2px 6px;" onclick="confirmAddTag(\''+o.id+'\',\'sku\')">Add</button>'+
           '<button style="font-size:11px;padding:2px 6px;" onclick="cancelAddTag(\''+o.id+'\',\'sku\')">\xd7</button>'+
         '</span>';
-      const cncInput = o._archived ? '' : '<button class="add-tag-btn cnc" onclick="addCncFromClipboard(\''+o.id+'\')">+ CNC/CSA</button>';
+      const cncInput = o._archived ? '' :
+        '<div class="cnc-add-wrap" id="cnc-add-wrap-'+o.id+'">'+
+          '<button class="add-tag-btn cnc" onclick="addCncFromClipboard(\''+o.id+'\')">+ CNC/CSA</button>'+
+        '</div>';
       const removeBtn = o._archived
         ? '<button class="remove-btn" onclick="confirmDeleteArchived(\''+o.id+'\')" title="Delete from history">\u2715</button>'
         : '<button class="remove-btn" onclick="confirmRemoveOrder(\''+o.id+'\')" title="Archive order">\u2715</button>';
@@ -726,14 +736,27 @@ function renderTable() {
             (o.receivedDate ? '<span class="tag-remove" onclick="clearRcvd(\''+o.id+'\')" title="Clear received date" style="margin-left:3px;opacity:.4;cursor:pointer;font-size:10px;">\u2715</span>' : '')+
             '<span class="rcvd-edit" id="rcvd-edit-'+o.id+'">'+
               '<input type="text" class="rcvd-input inline-input" id="rcvd-val-'+o.id+'" placeholder="YYYY-MM-DD" maxlength="10" onkeydown="rcvdKeydown(event,\''+o.id+'\')">'+
-              '<button style="font-size:11px;padding:2px 5px;" onclick="confirmEditRcvd(\''+o.id+'\')">Set</button>'+
-              '<button style="font-size:11px;padding:2px 5px;" onclick="cancelEditRcvd(\''+o.id+'\')">\xd7</button>'+
             '</span>'+
           '</td>';
       }
 
-      html += '<tr class="'+rowClass+'">'+
-        '<td class="order-id'+(o._archived?' archived-id':'')+'" onclick="copyOrderId(\''+o.id+'\')" title="Click to copy">'+o.id+'<span class="copy-hint">copy</span></td>'+
+      let cncDateCell;
+      if (o._archived) {
+        cncDateCell = '<td class="rcvd-cell" style="color:var(--text3);font-size:12px;">'+(o.cncDate||'\u2014')+'</td>';
+      } else {
+        const cncDateDisplay = o.cncDate || '\u2014';
+        cncDateCell =
+          '<td class="rcvd-cell">'+
+            '<span class="rcvd-display" id="cncdate-disp-'+o.id+'" onclick="clickCncDate(\''+o.id+'\')" title="Click to set from clipboard or edit">'+cncDateDisplay+'</span>'+
+            (o.cncDate ? '<span class="tag-remove" onclick="clearCncDate(\''+o.id+'\')" title="Clear CNC date" style="margin-left:3px;opacity:.4;cursor:pointer;font-size:10px;">\u2715</span>' : '')+
+            '<span class="rcvd-edit" id="cncdate-edit-'+o.id+'">'+
+              '<input type="text" class="rcvd-input inline-input" id="cncdate-val-'+o.id+'" placeholder="YYYY-MM-DD" maxlength="10" onkeydown="cncdateKeydown(event,\''+o.id+'\')">'+
+            '</span>'+
+          '</td>';
+      }
+
+      html += '<tr class="'+rowClass+'" onclick="selectRow(\''+o.id+'\')">'+ 
+        '<td class="order-id'+(o._archived?' archived-id':'')+'" onclick="copyOrderId(\''+o.id+'\');event.stopPropagation()" title="Click to copy">'+o.id+'</td>'+
         '<td>'+o.qty+'</td>'+
         '<td><span class="badge '+(o.hasCustomerOrders?'yes':'no')+'">'+(o.hasCustomerOrders?'Yes':'No')+'</span></td>'+
         '<td style="color:var(--text3);font-size:12px;">'+(o._archived
@@ -744,7 +767,8 @@ function renderTable() {
             : '\u2014'))+'</td>'+
         rcvdCell+
         '<td><div class="tags-cell">'+skuTags+skuInput+'</div></td>'+
-        '<td><div class="tags-cell">'+cncTags+cncInput+'</div></td>'+
+        '<td><div class="cnc-tags-cell">'+cncTags+cncInput+'</div></td>'+
+        cncDateCell+
         (showHistory ? '<td style="color:var(--text3);font-size:12px;">'+(o._archived?(o.archivedAt||'\u2014'):'')+'</td>' : '')+
         '<td>'+removeBtn+'</td>'+
       '</tr>';
@@ -795,6 +819,41 @@ function confirmEditRcvd(id) {
 }
 function rcvdKeydown(e,id) { if (e.key==='Enter') confirmEditRcvd(id); if (e.key==='Escape') cancelEditRcvd(id); }
 
+// ── CNC date inline edit ──────────────────────────────────────────────────────
+async function clickCncDate(id) {
+  let text='';
+  try { text=await navigator.clipboard.readText(); } catch(e) {}
+  if (text) {
+    const normalized=normalizeDate(text.trim());
+    if (normalized) {
+      orders[id].cncDate=normalized; save(); renderTable();
+      showNotice('Set CNC date to '+normalized+' from clipboard','success',2500);
+      return;
+    }
+  }
+  startEditCncDate(id);
+}
+function clearCncDate(id) { orders[id].cncDate=null; save(); renderTable(); }
+function startEditCncDate(id) {
+  document.getElementById('cncdate-disp-'+id).style.display='none';
+  const editEl=document.getElementById('cncdate-edit-'+id); editEl.style.display='inline-flex';
+  const inp=document.getElementById('cncdate-val-'+id);
+  const existing=orders[id]&&orders[id].cncDate;
+  inp.value=existing||(new Date().toISOString().slice(0,7)+'-');
+  inp.focus(); inp.setSelectionRange(inp.value.length, inp.value.length);
+}
+function cancelEditCncDate(id) {
+  document.getElementById('cncdate-edit-'+id).style.display='none';
+  document.getElementById('cncdate-disp-'+id).style.display='';
+}
+function confirmEditCncDate(id) {
+  const val=document.getElementById('cncdate-val-'+id).value.trim();
+  const normalized=normalizeDate(val);
+  if (val&&!normalized) { showNotice('Date must be YYYY-MM-DD, DD.MM.YYYY, DD/MM/YYYY, or 8 digits YYYYMMDD','warning',4000); return; }
+  orders[id].cncDate=normalized||null; save(); renderTable();
+}
+function cncdateKeydown(e,id) { if (e.key==='Enter') confirmEditCncDate(id); if (e.key==='Escape') cancelEditCncDate(id); }
+
 // ── Tag / SKU / CNC ───────────────────────────────────────────────────────────
 function startAddTag(id,type) { document.getElementById('tag-input-'+type+'-'+id).style.display='inline-flex'; document.getElementById('tag-val-'+type+'-'+id).focus(); }
 function cancelAddTag(id,type) { document.getElementById('tag-input-'+type+'-'+id).style.display='none'; document.getElementById('tag-val-'+type+'-'+id).value=''; }
@@ -843,6 +902,11 @@ async function copyTag(val) {
   try { await navigator.clipboard.writeText(val); }
   catch(e) { const ta=document.createElement('textarea'); ta.value=val; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta); }
   showNotice('Copied '+val+' to clipboard','info',2000);
+}
+function selectRow(id) {
+  if (copiedOrderId === id) return; // already selected, no re-render needed
+  copiedOrderId = id;
+  renderTable();
 }
 async function copyOrderId(id) {
   copiedOrderId=id;
@@ -910,6 +974,14 @@ function showNotice(msg,type,ms) {
   clearTimeout(noticeTimer);
   noticeTimer=setTimeout(function(){ el.innerHTML=''; }, ms||4000);
 }
+
+document.addEventListener('mousedown', function(e) {
+  if (!copiedOrderId) return;
+  if (!document.getElementById('table-container').contains(e.target)) {
+    copiedOrderId = null;
+    renderTable();
+  }
+});
 
 document.getElementById('btn-export').addEventListener('click', doExport);
 document.getElementById('btn-copy-full').addEventListener('click', copyFullExport);
