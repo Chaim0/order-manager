@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>ICR Manager v1.5.4</title>
+<title>ICR Manager v1.6.1</title>
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
   :root {
@@ -313,7 +313,12 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script>
-const VERSION = 'v1.5.4';
+const VERSION = 'v1.6.1';
+
+// ── Clipboard validation patterns ───────────────────────────────────────────────
+// SKU: exactly 5 digits. CNC/CSA: CNC|CSA + 8 digits + optional letter.
+const SKU_RE = /\b\d{5}\b/g;
+const CNC_RE = /\b(?:CNC|CSA)\d{8}[A-Z]?\b/gi;
 
 // ── Storage keys ──────────────────────────────────────────────────────────────
 const STORAGE_KEY  = 'order_manager_v1';
@@ -720,6 +725,11 @@ function renderTable() {
       const cncInput = o._archived ? '' :
         '<div class="cnc-add-wrap" id="cnc-add-wrap-'+o.id+'">'+
           '<button class="add-tag-btn cnc" onclick="addCncFromClipboard(\''+o.id+'\')">+ CNC/CSA</button>'+
+          '<span id="tag-input-cnc-'+o.id+'" class="inline-tag-form" style="display:none;">'+
+            '<input class="inline-input" type="text" id="tag-val-cnc-'+o.id+'" placeholder="CNC/CSA" onkeydown="tagKeydown(event,\''+o.id+'\',\'cnc\')">'+
+            '<button style="font-size:11px;padding:2px 6px;" onclick="confirmAddTag(\''+o.id+'\',\'cnc\')">Add</button>'+
+            '<button style="font-size:11px;padding:2px 6px;" onclick="cancelAddTag(\''+o.id+'\',\'cnc\')">\xd7</button>'+
+          '</span>'+
         '</div>';
       const removeBtn = o._archived
         ? '<button class="remove-btn" onclick="confirmDeleteArchived(\''+o.id+'\')" title="Delete from history">\u2715</button>'
@@ -874,29 +884,62 @@ function removeTag(id,type,val) {
 async function addSkuFromClipboard(orderId) {
   let text='';
   try { text=await navigator.clipboard.readText(); } catch(e) {}
-  if (text) {
-    const val=text.trim().toUpperCase();
-    // Accept any single non-whitespace token from clipboard as a SKU
-    if (val && !/\s/.test(val)) {
-      if (!orders[orderId].skus) orders[orderId].skus=[];
-      if (!orders[orderId].skus.includes(val)) { orders[orderId].skus.push(val); save(); renderAll(); showNotice('Added '+val+' to '+orderId,'success',2500); }
-      else showNotice(val+' already on this order','info',2500);
-      return;
-    }
-  }
-  // Fallback: open inline input
-  startAddTag(orderId,'sku');
+  const skuMatches = text ? Array.from(new Set((text.match(SKU_RE)||[]).map(function(v){ return v.toUpperCase(); }))) : [];
+  const cncMatches = text ? Array.from(new Set((text.match(CNC_RE)||[]).map(function(v){ return v.toUpperCase(); }))) : [];
+  if (!skuMatches.length && !cncMatches.length) { startAddTag(orderId,'sku'); return; }
+
+  if (!orders[orderId].skus) orders[orderId].skus=[];
+  if (!orders[orderId].cncs) orders[orderId].cncs=[];
+  const addedSku=[], dupSku=[], addedCnc=[], dupCnc=[];
+  skuMatches.forEach(function(val) {
+    if (!orders[orderId].skus.includes(val)) { orders[orderId].skus.push(val); addedSku.push(val); }
+    else dupSku.push(val);
+  });
+  cncMatches.forEach(function(val) {
+    if (!orders[orderId].cncs.includes(val)) { orders[orderId].cncs.push(val); addedCnc.push(val); }
+    else dupCnc.push(val);
+  });
+  if (addedSku.length||addedCnc.length) save();
+  renderAll();
+
+  const parts=[], dups=[];
+  if (addedSku.length) parts.push(addedSku.join(', '));
+  if (addedCnc.length) parts.push(addedCnc.join(', '));
+  if (dupSku.length) dups.push(dupSku.join(', '));
+  if (dupCnc.length) dups.push(dupCnc.join(', '));
+  if (parts.length && !dups.length) showNotice('Added '+parts.join(', ')+' to '+orderId,'success',2500);
+  else if (parts.length && dups.length) showNotice('Added '+parts.join(', ')+' to '+orderId+' ('+dups.join(', ')+' already present)','success',3500);
+  else showNotice(dups.join(', ')+' already on this order','info',2500);
 }
 async function addCncFromClipboard(orderId) {
   let text='';
-  try { text=await navigator.clipboard.readText(); }
-  catch(e) { showNotice('Could not read clipboard \u2014 try clicking the page first.','warning',5000); return; }
-  const m=text.trim().match(/((?:CNC|CSA)\d{8}[A-Z]?)/i);
-  if (!m) { showNotice('No CNC/CSA found in clipboard. Got: "'+text.trim().slice(0,40)+'"','warning',5000); return; }
-  const val=m[1].toUpperCase();
+  try { text=await navigator.clipboard.readText(); } catch(e) {}
+  const cncMatches = text ? Array.from(new Set((text.match(CNC_RE)||[]).map(function(v){ return v.toUpperCase(); }))) : [];
+  const skuMatches = text ? Array.from(new Set((text.match(SKU_RE)||[]).map(function(v){ return v.toUpperCase(); }))) : [];
+  if (!cncMatches.length && !skuMatches.length) { startAddTag(orderId,'cnc'); return; }
+
   if (!orders[orderId].cncs) orders[orderId].cncs=[];
-  if (!orders[orderId].cncs.includes(val)) { orders[orderId].cncs.push(val); save(); renderAll(); showNotice('Added '+val+' to '+orderId,'success',2500); }
-  else showNotice(val+' already on this order','info',2500);
+  if (!orders[orderId].skus) orders[orderId].skus=[];
+  const addedCnc=[], dupCnc=[], addedSku=[], dupSku=[];
+  cncMatches.forEach(function(val) {
+    if (!orders[orderId].cncs.includes(val)) { orders[orderId].cncs.push(val); addedCnc.push(val); }
+    else dupCnc.push(val);
+  });
+  skuMatches.forEach(function(val) {
+    if (!orders[orderId].skus.includes(val)) { orders[orderId].skus.push(val); addedSku.push(val); }
+    else dupSku.push(val);
+  });
+  if (addedCnc.length||addedSku.length) save();
+  renderAll();
+
+  const parts=[], dups=[];
+  if (addedCnc.length) parts.push(addedCnc.join(', '));
+  if (addedSku.length) parts.push(addedSku.join(', '));
+  if (dupCnc.length) dups.push(dupCnc.join(', '));
+  if (dupSku.length) dups.push(dupSku.join(', '));
+  if (parts.length && !dups.length) showNotice('Added '+parts.join(', ')+' to '+orderId,'success',2500);
+  else if (parts.length && dups.length) showNotice('Added '+parts.join(', ')+' to '+orderId+' ('+dups.join(', ')+' already present)','success',3500);
+  else showNotice(dups.join(', ')+' already on this order','info',2500);
 }
 async function copyTag(val) {
   try { await navigator.clipboard.writeText(val); }
