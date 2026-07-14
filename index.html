@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>ICR Manager v1.8.0</title>
+<title>ICR Manager v1.8.1</title>
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
   :root {
@@ -297,7 +297,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script>
-const VERSION = 'v1.8.0';
+const VERSION = 'v1.8.1';
 
 // ── Storage keys ──────────────────────────────────────────────────────────────
 const STORAGE_KEY  = 'order_manager_v1';
@@ -402,9 +402,11 @@ function load() {
   for (const o of Object.values(orders))         migrateOrder(o);
   for (const o of Object.values(history_orders)) migrateOrder(o);
   // Migration v1.1.0: strip hasCustomerOrders from history
-  let dirty = false;
-  for (const o of Object.values(history_orders)) { if ('hasCustomerOrders' in o) { delete o.hasCustomerOrders; dirty=true; } }
-  if (dirty) saveHistory();
+  for (const o of Object.values(history_orders)) { if ('hasCustomerOrders' in o) delete o.hasCustomerOrders; }
+  // Persist immediately so localStorage reflects the migrated schema right away,
+  // rather than only whenever the next unrelated save() happens to fire.
+  save();
+  saveHistory();
 }
 function save()        { localStorage.setItem(STORAGE_KEY,  JSON.stringify(orders)); }
 function saveHistory() { localStorage.setItem(HISTORY_KEY,  JSON.stringify(history_orders)); }
