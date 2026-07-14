@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>ICR Manager</title>
+<title>ICR Manager v1.8.1</title>
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
   :root {
@@ -29,15 +29,18 @@
       --red-bg:#791f1f; --red-text:#f7c1c1; --red-border:#e24b4a;
     }
   }
-  body { font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; background:var(--bg); color:var(--text); min-height:100vh; font-size:14px; line-height:1.5; }
+  /* Reserve scrollbar gutter always — prevents layout shift when scrollbar appears/disappears.
+     Also allows horizontal overflow on narrow viewports without a wrapper that breaks sticky. */
+  html { overflow-y:scroll; }
+  body { font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; background:var(--bg); color:var(--text); min-height:100vh; font-size:14px; line-height:1.5; overflow-x:auto; }
   .app { max-width:1200px; margin:0 auto; padding:24px 16px; }
   h1 { font-size:20px; font-weight:500; margin-bottom:20px; }
 
-  input[type="text"], select {
+  input[type="text"], input[type="date"], select {
     background:var(--surface); border:0.5px solid var(--border2); border-radius:var(--radius);
     color:var(--text); font-family:inherit; font-size:14px; padding:7px 12px; outline:none; transition:border-color .15s;
   }
-  input[type="text"]:focus, select:focus { border-color:var(--blue-border); box-shadow:0 0 0 2px rgba(55,138,221,.15); }
+  input[type="text"]:focus, input[type="date"]:focus, select:focus { border-color:var(--blue-border); box-shadow:0 0 0 2px rgba(55,138,221,.15); }
 
   button {
     background:var(--surface); border:0.5px solid var(--border2); border-radius:var(--radius);
@@ -94,45 +97,122 @@
   .search-row { display:flex; gap:8px; margin-bottom:12px; flex-wrap:wrap; }
   .search-row input { flex:1; min-width:180px; }
 
-  table { width:100%; border-collapse:collapse; background:var(--surface); border-radius:var(--radius-lg); overflow:hidden; border:0.5px solid var(--border); font-size:13px; }
-  thead th { background:var(--surface2); padding:10px 12px; text-align:left; font-weight:500; color:var(--text2); font-size:12px; border-bottom:0.5px solid var(--border); white-space:nowrap; }
+  /* ── Table layout ─────────────────────────────────────────────────────────── */
+  /* Wrapper: border + radius only. No overflow — any non-visible overflow on an ancestor
+     kills position:sticky on thead. Horizontal overflow falls through to body. */
+  .table-wrap {
+    border-radius:var(--radius-lg);
+    border:0.5px solid var(--border);
+  }
+  table {
+    width:100%;
+    min-width:900px;          /* prevents squish before h-scroll kicks in */
+    border-collapse:collapse;
+    background:var(--surface);
+    font-size:13px;
+    table-layout:fixed;       /* fixed layout: columns honour explicit widths */
+  }
+
+  /* ── Column widths ─────────────────────────────────────────────────────────
+     ICR IDs are always 9 chars (ICR + 6 digits). Lines/qty is a small count.
+     Date is a single consolidated column (earliest of ICR/CNC/imported dates).
+     SKU col gets the most space — 4 uniform ~78px tags + wrap for more.
+     CNC col holds tags only, no add affordance (import is fully automatic).
+  */
+  col.c-id       { width:100px; }
+  col.c-qty      { width:56px; }
+  col.c-custord  { width:60px; }
+  col.c-date     { width:104px; }
+  col.c-skus     { width:400px; }
+  col.c-cnc      { width:150px; }
+  col.c-archived { width:100px; }
+  col.c-action   { width:34px; }
+
+  thead th {
+    background:var(--surface2);
+    padding:8px 8px;
+    text-align:left;
+    font-weight:500;
+    color:var(--text2);
+    font-size:12px;
+    border-bottom:0.5px solid var(--border);
+    white-space:nowrap;
+    overflow:visible;
+    /* Sticky */
+    position:sticky;
+    top:0;
+    z-index:2;
+  }
+  /* Re-draw bottom border on sticky header (border-bottom doesn't paint on sticky in some browsers) */
+  thead th::after {
+    content:'';
+    position:absolute;
+    left:0; right:0; bottom:0;
+    height:0.5px;
+    background:var(--border);
+    pointer-events:none;
+  }
+
+  /* Filterable column headers */
+  th.filterable { cursor:pointer; user-select:none; }
+  th.filterable:hover { color:var(--text); background:var(--surface); }
+  th.filter-active { color:var(--blue-text) !important; background:var(--blue-bg) !important; }
+  .filter-badge {
+    display:inline-block; margin-left:5px;
+    background:var(--blue-text); color:var(--blue-bg);
+    border-radius:3px; padding:0 4px; font-size:10px; font-weight:600;
+    vertical-align:middle; line-height:16px;
+  }
+  th.filter-active .filter-badge { color:#fff; }
+
   tbody tr { border-bottom:0.5px solid var(--border); transition:background .1s; }
   tbody tr:last-child { border-bottom:none; }
   tbody tr:hover { background:var(--surface2); }
-  td { padding:9px 12px; vertical-align:middle; }
+  td { padding:7px 10px; vertical-align:top; overflow:hidden; }
 
+  /* Order ID cell */
   .order-id { font-family:monospace; font-size:16px; font-weight:500; cursor:pointer; user-select:none; white-space:nowrap; }
   .order-id:hover { color:var(--blue-text); }
-  .copy-hint { font-size:10px; color:var(--text3); margin-left:4px; opacity:0; transition:opacity .15s; }
-  tr:hover .copy-hint { opacity:1; }
 
   .badge { display:inline-block; border-radius:4px; padding:2px 7px; font-size:11px; font-weight:500; white-space:nowrap; }
   .badge.yes { background:var(--green-bg); color:var(--green-text); }
   .badge.no  { background:var(--surface2); color:var(--text3); }
 
-  .tags-cell { display:flex; gap:4px; flex-wrap:wrap; align-items:center; min-height:26px; }
-  .inline-tag-form { display:inline-flex; gap:4px; align-items:center; }
+  /* Tags cells: flex-wrap so overflow wraps within fixed column width */
+  .tags-cell { display:flex; gap:4px; flex-wrap:wrap; align-items:flex-start; min-height:22px; }
 
-  .sku-tag { background:var(--blue-bg); color:var(--blue-text); border-radius:4px; padding:2px 7px; font-size:16px; font-family:monospace; cursor:pointer; border:none; }
+  /* Uniform width so 4 tags always occupy exactly one row before wrapping —
+     "SKU × qty" never exceeds ~11 chars (5-digit SKU + × + up to 3-digit qty). */
+  .sku-tag {
+    display:inline-block; width:78px; text-align:center; overflow:hidden;
+    text-overflow:ellipsis; white-space:nowrap; background:var(--blue-bg); color:var(--blue-text);
+    border-radius:4px; padding:3px 4px; font-size:12px; font-family:monospace; cursor:pointer; border:none;
+  }
   .sku-tag:hover { opacity:.75; }
-  .cnc-tag { background:var(--purple-bg); color:var(--purple-text); border-radius:4px; padding:2px 7px; font-size:16px; font-family:monospace; cursor:pointer; border:none; }
+  .sku-tag.more-tag { background:none; border:0.5px dashed var(--border2); color:var(--text3); }
+  .sku-tag.more-tag:hover { border-color:var(--blue-border); color:var(--blue-text); opacity:1; }
+
+  .cnc-tag {
+    display:inline-block; background:var(--purple-bg); color:var(--purple-text); border-radius:4px;
+    padding:3px 7px; font-size:12px; font-family:monospace; cursor:pointer; border:none; white-space:nowrap;
+  }
   .cnc-tag:hover { opacity:.75; }
 
-  .add-tag-btn { background:none; border:0.5px dashed var(--border2); border-radius:4px; color:var(--text3); font-size:16px; padding:2px 7px; cursor:pointer; }
-  .add-tag-btn:hover { border-color:var(--blue-border); color:var(--blue-text); }
-  .add-tag-btn.cnc:hover { border-color:var(--purple-border); color:var(--purple-text); }
+  /* Consolidated date column (earliest of ICR/CNC/imported dates) */
+  .rcvd-cell { white-space:nowrap; }
 
-  .inline-input { font-size:16px; padding:2px 6px; width:100px; border-radius:4px; background:var(--surface); border:0.5px solid var(--border2); color:var(--text); font-family:monospace; outline:none; }
-  .inline-input:focus { border-color:var(--blue-border); }
-
-  .remove-btn { background:none; border:none; color:var(--text3); cursor:pointer; font-size:13px; padding:2px 6px; border-radius:4px; }
+  .remove-btn { background:none; border:none; color:var(--text3); cursor:pointer; font-size:13px; padding:2px 4px; border-radius:4px; }
   .remove-btn:hover { color:var(--red-text); background:var(--red-bg); }
 
-  .highlight   { background:rgba(239,159,39,0.2); }
-  .copied-row  { background:rgba(55,138,221,0.12); }
-  .copied-row:hover { background:rgba(55,138,221,0.18) !important; }
-  .archived-row { opacity:.55; }
-  .archived-id  { color:var(--text3) !important; }
+  /* Row states */
+  .highlight      { background:rgba(239,159,39,0.2); }
+  .selected-row   { background:rgba(55,138,221,0.12); }
+  .selected-row:hover { background:rgba(55,138,221,0.18) !important; }
+  .archived-row   { opacity:.55; }
+  .archived-id    { color:var(--text3) !important; }
+
+  /* Empty state inside tbody */
+  .empty-row td { padding:40px 12px; text-align:center; color:var(--text3); font-size:13px; }
 
   .modal-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.4); z-index:100; align-items:center; justify-content:center; }
   .modal-overlay.open { display:flex; }
@@ -141,7 +221,6 @@
   .modal p  { font-size:13px; color:var(--text2); margin-bottom:14px; }
   .modal-actions { display:flex; gap:8px; justify-content:flex-end; margin-top:14px; }
 
-  .empty-state { text-align:center; padding:40px; color:var(--text3); font-size:13px; }
   #paste-status { font-size:12px; color:var(--text3); padding:4px 0; min-height:20px; }
 </style>
 </head>
@@ -151,7 +230,7 @@
   <div id="notices-top" style="display:none"></div>
 
   <div class="import-hint">
-    <div><strong>Importing:</strong> paste anywhere on the page (not into a search field) to add to buffer. When done pasting, click <strong>Commit import</strong>.</div>
+    <div><strong>Importing:</strong> paste the bookmarklet's JSON output anywhere on the page (not into a search field) to add to buffer. When done pasting, click <strong>Commit import</strong>.</div>
     <div style="display:flex;gap:8px;align-items:center;margin-left:auto;">
       <span id="paste-status"></span>
       <button class="primary" onclick="commitImport()">Commit import</button>
@@ -218,6 +297,8 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script>
+const VERSION = 'v1.8.1';
+
 // ── Storage keys ──────────────────────────────────────────────────────────────
 const STORAGE_KEY  = 'order_manager_v1';
 const HISTORY_KEY  = 'order_manager_history_v1';
@@ -229,123 +310,184 @@ let showHistory    = false;
 let copiedOrderId  = null;
 let scannedChunks  = {};
 let lastExportChunks = [];
+// SKU tag lists collapse to 4 + "+N" past that; toggling here expands a single
+// row for readability. Intentionally not persisted — resets on reload.
+let expandedSkuRows = new Set();
+
+// ── Column filters ────────────────────────────────────────────────────────────
+let qtyFilter = 'le100'; // 'all' | 'le100' | 'gt100' — le100 is the common case, so it's the default
+let skuFilter = 'all';   // 'all' | 'sku'   | 'nosku'
+let ageFilter = 'all';   // 'all' | 'old'   (earliest known date older than AGE_FILTER_DAYS)
+
+const QTY_STATES = ['all', 'le100', 'gt100'];
+const SKU_STATES = ['all', 'sku', 'nosku'];
+const AGE_STATES = ['all', 'old'];
+
+// How many days before an order's earliest known date (ICR / linked CNC / date
+// imported) counts as "old" for the age filter. Hardcoded for now; move to a
+// real settings UI once the table view gets its full overhaul.
+const AGE_FILTER_DAYS = 14;
+
+// NOTE: since v1.7.0, o.qty for JSON-imported orders is a count of distinct SKUs
+// (matching the internal tool's own list view), not a total unit quantity as it
+// was for legacy tab-paste orders. The le100/gt100 thresholds below predate that
+// change and are unlikely to be useful anymore — left as-is pending the UX branch.
+const QTY_BADGES = { all: null, le100: '\u2264100', gt100: '>100' };
+const SKU_BADGES = { all: null, sku: 'has SKU', nosku: 'no SKU' };
+const AGE_BADGES = { all: null, old: '>'+Math.round(AGE_FILTER_DAYS/7)+' wks' };
+
+function cycleFilter(which) {
+  if (which === 'qty') { const i = QTY_STATES.indexOf(qtyFilter); qtyFilter = QTY_STATES[(i+1) % QTY_STATES.length]; }
+  else if (which === 'sku') { const i = SKU_STATES.indexOf(skuFilter); skuFilter = SKU_STATES[(i+1) % SKU_STATES.length]; }
+  else if (which === 'age') { const i = AGE_STATES.indexOf(ageFilter); ageFilter = AGE_STATES[(i+1) % AGE_STATES.length]; }
+  renderTable();
+}
+
+// Earliest of the three "when did we first know about this" dates: the ICR's
+// own posting date, any linked CNC's date, and the date this order was first
+// imported locally. Used for the single consolidated Date column and its filter.
+function earliestDate(o) {
+  const dates = [];
+  if (o.date) dates.push(o.date);
+  (o.cncs||[]).forEach(function(c){ if (c.date) dates.push(c.date); });
+  if (o.receivedDate) dates.push(o.receivedDate);
+  if (!dates.length) return null;
+  return dates.reduce(function(a,b){ return a<b?a:b; });
+}
+function dateBreakdown(o) {
+  const parts=[];
+  if (o.date) parts.push('ICR: '+o.date);
+  (o.cncs||[]).forEach(function(c){ if (c.date) parts.push('CNC '+c.id+': '+c.date); });
+  if (o.receivedDate) parts.push('Imported: '+o.receivedDate);
+  return parts.length ? parts.join(' \u2014 ') : 'No date recorded';
+}
+
+function applyFilters(rows) {
+  const cutoffStr = new Date(Date.now() - AGE_FILTER_DAYS*24*60*60*1000).toISOString().slice(0,10);
+  if (qtyFilter === 'le100') rows = rows.filter(function(o){ return o.qty <= 100; });
+  else if (qtyFilter === 'gt100') rows = rows.filter(function(o){ return o.qty > 100; });
+  if (skuFilter === 'sku')   rows = rows.filter(function(o){ return o.skus && o.skus.length > 0; });
+  else if (skuFilter === 'nosku') rows = rows.filter(function(o){ return !o.skus || o.skus.length === 0; });
+  if (ageFilter === 'old') rows = rows.filter(function(o){ const d=earliestDate(o); return d && d < cutoffStr; });
+  return rows;
+}
+
+// ── Schema migration ─────────────────────────────────────────────────────────
+// v1.7.0: cncs become objects (id/source/printed/status/statusHistory/date/dateSource)
+// instead of plain strings; orders gain a `lines` array ({sku,qty}) for per-SKU
+// quantity from the JSON import, plus `trackingNo` and `dateSource`.
+// v1.8.0: history orders gain `archivalHistory: [{date, reason}]` — reason is
+// 'manual' (explicit archive), 'missing' (auto-archived because it disappeared
+// from an import), or 'unknown' (migrated from an order archived before this
+// existed). Kept even if the order later reappears and is archived again, so
+// repeat archive events for the same id accumulate rather than overwrite.
+function migrateOrder(o) {
+  if (!o.skus) o.skus = [];
+  if (!o.lines) o.lines = o.skus.map(function(s){ return { sku:s, qty:null }; });
+  if (!o.cncs) o.cncs = [];
+  o.cncs = o.cncs.map(function(c) {
+    return (typeof c === 'string')
+      ? { id:c, source:'manual', printed:false, status:null, statusHistory:[], date:null, dateSource:null }
+      : c;
+  });
+  if (o.trackingNo === undefined) o.trackingNo = null;
+  if (o.dateSource === undefined) o.dateSource = o.date ? 'legacy' : null;
+  if (!o.archivalHistory) o.archivalHistory = o.archivedAt ? [{ date:o.archivedAt, reason:'unknown' }] : [];
+}
 
 // ── Persist ───────────────────────────────────────────────────────────────────
 function load() {
   try { const s = localStorage.getItem(STORAGE_KEY);  if (s) orders         = JSON.parse(s); } catch(e) { orders = {}; }
   try { const s = localStorage.getItem(HISTORY_KEY);  if (s) history_orders = JSON.parse(s); } catch(e) { history_orders = {}; }
-  for (const o of Object.values(orders))         { if (!o.skus) o.skus=[]; if (!o.cncs) o.cncs=[]; }
-  for (const o of Object.values(history_orders)) { if (!o.skus) o.skus=[]; if (!o.cncs) o.cncs=[]; }
+  for (const o of Object.values(orders))         migrateOrder(o);
+  for (const o of Object.values(history_orders)) migrateOrder(o);
+  // Migration v1.1.0: strip hasCustomerOrders from history
+  for (const o of Object.values(history_orders)) { if ('hasCustomerOrders' in o) delete o.hasCustomerOrders; }
+  // Persist immediately so localStorage reflects the migrated schema right away,
+  // rather than only whenever the next unrelated save() happens to fire.
+  save();
+  saveHistory();
 }
 function save()        { localStorage.setItem(STORAGE_KEY,  JSON.stringify(orders)); }
 function saveHistory() { localStorage.setItem(HISTORY_KEY,  JSON.stringify(history_orders)); }
 function historyKB()   { return (JSON.stringify(history_orders).length / 1024).toFixed(1); }
 
-// ── Base36 (uppercase alphanumeric = QR alphanumeric mode) ────────────────────
+// ── Base36 ────────────────────────────────────────────────────────────────────
 const B36 = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ';
-
 function b36encode(bytes) {
-  let nums = Array.from(bytes);
-  let result = '';
-  let leadingZeros = 0;
+  let nums = Array.from(bytes), result = '', leadingZeros = 0;
   for (const b of nums) { if (b === 0) leadingZeros++; else break; }
   while (nums.length) {
     let rem = 0, next = [];
-    for (const n of nums) {
-      const cur = rem * 256 + n;
-      const q = Math.floor(cur / 36);
-      rem = cur % 36;
-      if (next.length || q) next.push(q);
-    }
-    result = B36[rem] + result;
-    nums = next;
+    for (const n of nums) { const cur = rem*256+n, q = Math.floor(cur/36); rem = cur%36; if (next.length||q) next.push(q); }
+    result = B36[rem] + result; nums = next;
   }
   return '0'.repeat(leadingZeros) + (result || '0');
 }
-
 function b36decode(str) {
-  str = str.toUpperCase();
-  let nums = [0];
+  str = str.toUpperCase(); let nums = [0];
   for (const ch of str) {
-    const val = B36.indexOf(ch);
-    if (val < 0) throw new Error('Invalid base36 character: ' + ch);
+    const val = B36.indexOf(ch); if (val<0) throw new Error('Invalid base36: '+ch);
     let carry = val;
-    for (let i = nums.length - 1; i >= 0; i--) {
-      const cur = nums[i] * 36 + carry;
-      nums[i] = cur & 0xff;
-      carry = cur >> 8;
-    }
-    while (carry) { nums.unshift(carry & 0xff); carry >>= 8; }
+    for (let i=nums.length-1; i>=0; i--) { const cur=nums[i]*36+carry; nums[i]=cur&0xff; carry=cur>>8; }
+    while (carry) { nums.unshift(carry&0xff); carry>>=8; }
   }
   return new Uint8Array(nums);
 }
 
 // ── Encode / decode state ─────────────────────────────────────────────────────
 function encodeChunked(obj, chunkSize) {
-  const compressed = pako.deflate(new TextEncoder().encode(JSON.stringify(obj)), { level: 9 });
+  const compressed = pako.deflate(new TextEncoder().encode(JSON.stringify(obj)), { level:9 });
   const full = b36encode(compressed);
   const chunks = [];
-  for (let i = 0; i < full.length; i += chunkSize) chunks.push(full.slice(i, i + chunkSize));
-  return chunks.map((ch, i) => 'ICRv1:' + (i + 1) + '/' + chunks.length + ':' + ch);
+  for (let i=0; i<full.length; i+=chunkSize) chunks.push(full.slice(i, i+chunkSize));
+  return chunks.map((ch,i) => 'ICRv1:'+(i+1)+'/'+chunks.length+':'+ch);
 }
-
 function decodeChunks(strings) {
   const parsed = [];
   for (const s of strings) {
     const m = s.trim().match(/^ICRv1:(\d+)\/(\d+):([0-9A-Za-z]+)$/);
-    if (!m) throw new Error('Invalid chunk: "' + s.slice(0, 40) + '"');
-    parsed.push({ n: parseInt(m[1]), t: parseInt(m[2]), data: m[3].toUpperCase() });
+    if (!m) throw new Error('Invalid chunk: "'+s.slice(0,40)+'"');
+    parsed.push({ n:parseInt(m[1]), t:parseInt(m[2]), data:m[3].toUpperCase() });
   }
   if (!parsed.length) throw new Error('No valid chunks');
   const T = parsed[0].t;
-  if (!parsed.every(p => p.t === T)) throw new Error('Mismatched chunk totals');
-  parsed.sort((a, b) => a.n - b.n);
+  if (!parsed.every(p=>p.t===T)) throw new Error('Mismatched chunk totals');
+  parsed.sort((a,b)=>a.n-b.n);
   const missing = [];
-  for (let i = 1; i <= T; i++) if (!parsed.find(p => p.n === i)) missing.push(i);
-  if (missing.length) throw new Error('Missing chunks: ' + missing.join(', '));
-  const compressed = b36decode(parsed.map(p => p.data).join(''));
+  for (let i=1; i<=T; i++) if (!parsed.find(p=>p.n===i)) missing.push(i);
+  if (missing.length) throw new Error('Missing chunks: '+missing.join(', '));
+  const compressed = b36decode(parsed.map(p=>p.data).join(''));
   return JSON.parse(new TextDecoder().decode(pako.inflate(compressed)));
 }
 
 // ── QR rendering ──────────────────────────────────────────────────────────────
 function renderQRChunks(chunks) {
-  const strip = document.getElementById('qr-strip');
-  strip.innerHTML = '';
+  const strip = document.getElementById('qr-strip'); strip.innerHTML = '';
   const sz = chunks.length === 1 ? 240 : 180;
   chunks.forEach(function(text, i) {
-    const wrap = document.createElement('div');
-    wrap.className = 'qr-wrap';
-    const lbl = document.createElement('span');
-    lbl.textContent = chunks.length === 1 ? 'Scan to import' : (i + 1) + ' / ' + chunks.length;
-    const canvas = document.createElement('canvas');
-    canvas.width = sz; canvas.height = sz;
+    const wrap = document.createElement('div'); wrap.className = 'qr-wrap';
+    const lbl  = document.createElement('span'); lbl.textContent = chunks.length===1 ? 'Scan to import' : (i+1)+' / '+chunks.length;
+    const canvas = document.createElement('canvas'); canvas.width=sz; canvas.height=sz;
     canvas.title = 'Click to copy this chunk';
-    canvas.addEventListener('click', function() { copyToClip(text); });
-    wrap.appendChild(lbl);
-    wrap.appendChild(canvas);
-    strip.appendChild(wrap);
+    canvas.addEventListener('click', function(){ copyToClip(text); });
+    wrap.appendChild(lbl); wrap.appendChild(canvas); strip.appendChild(wrap);
     setTimeout(function() {
       try {
         const tmp = document.createElement('div');
-        new QRCode(tmp, { text: text.toUpperCase(), width: sz, height: sz, correctLevel: QRCode.CorrectLevel.M });
+        new QRCode(tmp, { text:text.toUpperCase(), width:sz, height:sz, correctLevel:QRCode.CorrectLevel.M });
         setTimeout(function() {
           const el = tmp.querySelector('canvas') || tmp.querySelector('img');
           if (!el) return;
           const ctx = canvas.getContext('2d');
-          if (el.tagName === 'CANVAS') {
-            ctx.drawImage(el, 0, 0, sz, sz);
-          } else {
-            const img = new Image();
-            img.onload = function() { ctx.drawImage(img, 0, 0, sz, sz); };
-            img.src = el.src;
-          }
+          if (el.tagName==='CANVAS') { ctx.drawImage(el,0,0,sz,sz); }
+          else { const img=new Image(); img.onload=function(){ ctx.drawImage(img,0,0,sz,sz); }; img.src=el.src; }
         }, 80);
       } catch(e) {
-        const ctx = canvas.getContext('2d');
-        ctx.fillStyle = '#888'; ctx.font = '12px sans-serif';
-        ctx.fillText('QR error: ' + e.message, 4, sz / 2);
+        const ctx = canvas.getContext('2d'); ctx.fillStyle='#888'; ctx.font='12px sans-serif';
+        ctx.fillText('QR error: '+e.message, 4, sz/2);
       }
-    }, i * 60);
+    }, i*60);
   });
 }
 
@@ -353,27 +495,18 @@ function renderQRChunks(chunks) {
 function doExport() {
   try {
     const chunkSize = parseInt(document.getElementById('qr-size-select').value, 10);
-    const payload = { active: orders, history: history_orders, exportedAt: new Date().toISOString() };
+    const payload = { active:orders, history:history_orders, exportedAt:new Date().toISOString() };
     lastExportChunks = encodeChunked(payload, chunkSize);
-    const total = lastExportChunks.reduce(function(s, c) { return s + c.length; }, 0);
-    document.getElementById('export-info').textContent =
-      lastExportChunks.length + ' QR code(s) \u2014 ' + total + ' chars total (' + (total / 1024).toFixed(1) + ' KB)';
+    const total = lastExportChunks.reduce(function(s,c){ return s+c.length; }, 0);
+    document.getElementById('export-info').textContent = lastExportChunks.length+' QR code(s) \u2014 '+total+' chars total ('+( total/1024).toFixed(1)+' KB)';
     renderQRChunks(lastExportChunks);
-  } catch(e) {
-    document.getElementById('export-info').textContent = 'Error: ' + e.message;
-  }
+  } catch(e) { document.getElementById('export-info').textContent = 'Error: '+e.message; }
 }
-
 async function copyToClip(text) {
   try { await navigator.clipboard.writeText(text); }
-  catch(e) {
-    const ta = document.createElement('textarea');
-    ta.value = text; document.body.appendChild(ta); ta.select();
-    document.execCommand('copy'); document.body.removeChild(ta);
-  }
+  catch(e) { const ta=document.createElement('textarea'); ta.value=text; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta); }
   showNotice('Copied to clipboard', 'success', 2000);
 }
-
 function copyFullExport() {
   if (!lastExportChunks.length) { doExport(); setTimeout(copyFullExport, 300); return; }
   copyToClip(lastExportChunks.join('\n'));
@@ -382,135 +515,225 @@ function copyFullExport() {
 // ── Import ────────────────────────────────────────────────────────────────────
 function renderScanProgress() {
   const el = document.getElementById('scan-progress');
-  const keys = Object.keys(scannedChunks).map(Number).sort(function(a,b){return a-b;});
-  if (!keys.length) { el.textContent = ''; return; }
-  const T = scannedChunks[keys[0]].t;
-  const missing = [];
-  for (let i = 1; i <= T; i++) if (!scannedChunks[i]) missing.push(i);
-  el.innerHTML = 'Scanned: ' + keys.join(', ') + ' of ' + T +
-    (missing.length
-      ? ' \u2014 still need: <strong style="color:var(--amber-text)">' + missing.join(', ') + '</strong>'
-      : ' \u2014 <strong style="color:var(--green-text)">all chunks received</strong>');
+  const keys = Object.keys(scannedChunks).map(Number).sort(function(a,b){ return a-b; });
+  if (!keys.length) { el.textContent=''; return; }
+  const T = scannedChunks[keys[0]].t, missing = [];
+  for (let i=1; i<=T; i++) if (!scannedChunks[i]) missing.push(i);
+  el.innerHTML = 'Scanned: '+keys.join(', ')+' of '+T+(missing.length ? ' \u2014 still need: <strong style="color:var(--amber-text)">'+missing.join(', ')+'</strong>' : ' \u2014 <strong style="color:var(--green-text)">all chunks received</strong>');
 }
-
 function clearImportUI() {
-  document.getElementById('import-box').value = '';
-  document.getElementById('import-status').textContent = '';
-  document.getElementById('scan-progress').textContent = '';
-  scannedChunks = {};
+  document.getElementById('import-box').value='';
+  document.getElementById('import-status').textContent='';
+  document.getElementById('scan-progress').textContent='';
+  scannedChunks={};
 }
-
 function doImport() {
   const raw = document.getElementById('import-box').value.trim();
   const status = document.getElementById('import-status');
-  if (!raw) { status.textContent = 'Nothing to import.'; return; }
-
-  const lines = raw.split(/[\n\r]+/).map(function(l){ return l.trim(); }).filter(function(l){ return l.indexOf('ICRv1:') === 0; });
-  if (!lines.length) { status.textContent = 'No ICRv1 strings found.'; return; }
-
+  if (!raw) { status.textContent='Nothing to import.'; return; }
+  const lines = raw.split(/[\n\r]+/).map(function(l){ return l.trim(); }).filter(function(l){ return l.indexOf('ICRv1:')===0; });
+  if (!lines.length) { status.textContent='No ICRv1 strings found.'; return; }
   try {
-    // Accumulate scanned chunks
     for (const line of lines) {
       const m = line.match(/^ICRv1:(\d+)\/(\d+):([0-9A-Za-z]+)$/);
-      if (m) {
-        const n = parseInt(m[1]), t = parseInt(m[2]);
-        scannedChunks[n] = { n: n, t: t, data: m[3].toUpperCase() };
-      }
+      if (m) { const n=parseInt(m[1]), t=parseInt(m[2]); scannedChunks[n]={ n:n, t:t, data:m[3].toUpperCase() }; }
     }
     renderScanProgress();
-
     const keys = Object.keys(scannedChunks).map(Number);
-    if (!keys.length) { status.textContent = 'No valid chunks parsed.'; return; }
-    const T = scannedChunks[keys[0]].t;
-    const missing = [];
-    for (let i = 1; i <= T; i++) if (!scannedChunks[i]) missing.push(i);
-    if (missing.length) {
-      status.textContent = 'Got ' + keys.length + '/' + T + ' chunks. Still need: ' + missing.join(', ');
-      return;
-    }
-
-    const chunkStrings = Object.values(scannedChunks).map(function(c) {
-      return 'ICRv1:' + c.n + '/' + c.t + ':' + c.data;
-    });
+    if (!keys.length) { status.textContent='No valid chunks parsed.'; return; }
+    const T = scannedChunks[keys[0]].t, missing=[];
+    for (let i=1; i<=T; i++) if (!scannedChunks[i]) missing.push(i);
+    if (missing.length) { status.textContent='Got '+keys.length+'/'+T+' chunks. Still need: '+missing.join(', '); return; }
+    const chunkStrings = Object.values(scannedChunks).map(function(c){ return 'ICRv1:'+c.n+'/'+c.t+':'+c.data; });
     const payload = decodeChunks(chunkStrings);
     if (!payload.active || !payload.history) throw new Error('Missing fields in payload');
-
     const activeCount = Object.keys(payload.active).length;
     const histCount   = Object.keys(payload.history).length;
-    showModal(
-      'Import state?',
-      'Replace current state with: ' + activeCount + ' active + ' + histCount + ' archived orders (exported ' + (payload.exportedAt || '').slice(0, 10) + '). Existing data will be overwritten.',
-      [
-        { label: 'Import', cls: 'primary', action: function() {
-          orders         = payload.active;
-          history_orders = payload.history;
-          for (const o of Object.values(orders))         { if (!o.skus) o.skus=[]; if (!o.cncs) o.cncs=[]; }
-          for (const o of Object.values(history_orders)) { if (!o.skus) o.skus=[]; if (!o.cncs) o.cncs=[]; }
-          save(); saveHistory();
-          clearImportUI();
-          renderAll(); closeModal();
-          showNotice('Imported ' + activeCount + ' active + ' + histCount + ' archived orders.', 'success', 4000);
-        }},
-        { label: 'Cancel', cls: '', action: closeModal }
-      ]
-    );
-  } catch(e) {
-    status.textContent = 'Error: ' + e.message;
-  }
+    showModal('Import state?', 'Replace current state with: '+activeCount+' active + '+histCount+' archived orders (exported '+(payload.exportedAt||'').slice(0,10)+'). Existing data will be overwritten.', [
+      { label:'Import', cls:'primary', action:function() {
+        orders=payload.active; history_orders=payload.history;
+        for (const o of Object.values(orders))         migrateOrder(o);
+        for (const o of Object.values(history_orders)) migrateOrder(o);
+        save(); saveHistory(); clearImportUI(); renderAll(); closeModal();
+        showNotice('Imported '+activeCount+' active + '+histCount+' archived orders.', 'success', 4000);
+      }},
+      { label:'Cancel', cls:'', action:closeModal }
+    ]);
+  } catch(e) { status.textContent='Error: '+e.message; }
 }
 
-// ── ICR order paste parsing ───────────────────────────────────────────────────
-function parseRaw(raw) {
-  const cleaned = raw.replace(/[\u200B-\u200D\uFEFF]/g, '').replace(/\r/g, '');
-  const lines = cleaned.split('\n');
-  const result = [];
-  for (const line of lines) {
-    const trimmed = line.trim();
-    if (!trimmed) continue;
-    if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
-      if (result.length && !result[result.length - 1].date) result[result.length - 1].date = trimmed;
-      continue;
-    }
-    let id = null, qty = 0, hasCustomerOrders = false;
-    const cols = trimmed.split(/\t+/).map(function(c){ return c.trim(); }).filter(Boolean);
-    if (cols.length >= 3) {
-      const m = cols[0].match(/(?:_*)(ICR\d+)(?:_*)/i);
-      if (m && cols[1] && cols[1].toLowerCase().includes('incoming')) {
-        id = m[1]; qty = parseInt(cols[2]) || 0;
-        hasCustomerOrders = !!(cols[3] && cols[3].toLowerCase() === 'yes');
+// ── Date normalisation ────────────────────────────────────────────────────────
+function normalizeDate(raw) {
+  if (!raw) return null;
+  const s = raw.trim(); if (!s) return null;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return isValidISODate(s) ? s : null;
+  if (/^\d{8}$/.test(s)) { const iso=s.slice(0,4)+'-'+s.slice(4,6)+'-'+s.slice(6,8); return isValidISODate(iso)?iso:null; }
+  const dot = s.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/);
+  if (dot) { const iso=dot[3]+'-'+pad2(dot[2])+'-'+pad2(dot[1]); return isValidISODate(iso)?iso:null; }
+  const sl = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (sl) {
+    const a=parseInt(sl[1],10), b=parseInt(sl[2],10), y=sl[3];
+    let day,month;
+    if (a>12) { day=a; month=b; } else if (b>12) { day=b; month=a; } else { day=a; month=b; }
+    const iso=y+'-'+pad2(month)+'-'+pad2(day); return isValidISODate(iso)?iso:null;
+  }
+  return null;
+}
+// Extracts the digit run from an order reference (e.g. "CSA11106428" or
+// "CNC11062197A" -> "11106428" / "11062197") so an ICR line's sourceDocumentNo
+// can be matched against a customer order's `no`, regardless of CSA/CNC prefix
+// or trailing letter. Best-effort: unmatched refs just fall back to manual tagging.
+function normalizeDocRef(raw) {
+  if (!raw) return null;
+  const m = String(raw).toUpperCase().match(/\d+/);
+  return m ? m[0] : null;
+}
+// csaOrders documentDate looks like "14.07.2026 13:55" — strip the time before
+// handing to normalizeDate, which already understands DD.MM.YYYY.
+function normalizeCsaDate(raw) {
+  if (!raw) return null;
+  return normalizeDate(String(raw).trim().split(' ')[0]);
+}
+function pad2(n) { return String(n).padStart(2,'0'); }
+function isValidISODate(iso) {
+  const p=iso.split('-'); if (p.length!==3) return false;
+  const y=parseInt(p[0],10),m=parseInt(p[1],10),d=parseInt(p[2],10);
+  if (!y||!m||!d||m<1||m>12||d<1||d>31) return false;
+  const dt=new Date(y,m-1,d);
+  return dt.getFullYear()===y && dt.getMonth()===m-1 && dt.getDate()===d;
+}
+
+// ── JSON import (bookmarklet export: transferOrders + csaOrders) ──────────────
+// Merges a matched/updated cnc into an order's existing cncs list in place.
+// `existingList` may contain manually-tagged entries (source:'manual'); those
+// get upgraded to source:'auto' once the JSON import confirms a real match,
+// since we now have richer data (status/printed/date) than a bare id.
+// Status changes are recorded in statusHistory using the import date, since the
+// API only exposes the *current* status, not when it changed.
+function mergeCncs(existingList, autoList) {
+  const today = new Date().toISOString().slice(0,10);
+  const byId = {};
+  (existingList || []).forEach(function(c) { byId[c.id] = c; });
+  (autoList || []).forEach(function(a) {
+    const cur = byId[a.id];
+    if (!cur) {
+      byId[a.id] = {
+        id: a.id, source: 'auto', printed: a.printed,
+        status: a.status, statusHistory: a.status ? [{ status:a.status, changedAt:today }] : [],
+        date: a.date, dateSource: a.dateSource
+      };
+    } else {
+      if (a.status && a.status !== cur.status) {
+        cur.statusHistory = cur.statusHistory || [];
+        cur.statusHistory.push({ status:a.status, changedAt:today });
       }
+      cur.source = 'auto';
+      cur.printed = a.printed;
+      cur.status = a.status || cur.status;
+      cur.date = a.date || cur.date;
+      cur.dateSource = a.dateSource || cur.dateSource;
     }
-    if (!id) {
-      const m = trimmed.match(/(?:_*)(ICR\d+)(?:_*)\s*Incoming\s*(\d+)\s*(Yes|No)/i);
-      if (m) { id = m[1]; qty = parseInt(m[2]); hasCustomerOrders = m[3].toLowerCase() === 'yes'; }
-    }
-    if (id) result.push({ id: id, qty: qty, hasCustomerOrders: hasCustomerOrders, date: null });
-  }
-  return result;
+  });
+  return Object.values(byId);
 }
 
-// Global paste — only when no input has focus
+// Parses the bookmarklet's combined JSON payload into buffer-shaped entries.
+// Attempts to link each ICR line's sourceDocumentNo to a customer order's `no`
+// via normalizeDocRef (digit-only match) — this linkage is best-effort and not
+// yet confirmed against a real overlapping pair, so unmatched lines are left
+// for the existing manual "+ CNC/CSA" clipboard flow rather than failing.
+function parseJsonImport(payload) {
+  const transferResult = (payload.transferOrders && payload.transferOrders.result) || [];
+  const csaList = (payload.csaOrders && (payload.csaOrders.orders || payload.csaOrders.allOrders)) || [];
+  const customerOrders = csaList.filter(function(o){ return o.orderSubType === 'CustomerOrder'; });
+
+  const csaByNorm = {};
+  customerOrders.forEach(function(o) {
+    const norm = normalizeDocRef(o.no);
+    if (norm) csaByNorm[norm] = o;
+  });
+
+  let matchedCount = 0, sourceLineCount = 0;
+  const entries = transferResult.map(function(t) {
+    const lines = (t.lines || []).map(function(l) { return { sku:String(l.itemNo), qty:l.quantity||0 }; });
+    const skus = lines.map(function(l){ return l.sku; });
+    const matchedCncs = [];
+    (t.lines || []).forEach(function(l) {
+      if (!l.sourceDocumentNo) return;
+      sourceLineCount++;
+      const norm = normalizeDocRef(l.sourceDocumentNo);
+      const csa = norm ? csaByNorm[norm] : null;
+      if (csa) {
+        matchedCount++;
+        matchedCncs.push({
+          id: csa.no, source:'auto', printed: !!csa.orderPrinted,
+          status: csa.csaStatus || csa.status || null,
+          date: normalizeCsaDate(csa.documentDate), dateSource:'cnc'
+        });
+      }
+    });
+    return {
+      id: t.no, qty: lines.length, lines: lines, skus: skus,
+      hasCustomerOrders: !!t.hasCustomerOrders,
+      date: normalizeDate(t.postingDate), dateSource:'icr',
+      trackingNo: t.trackingNo || null,
+      _matchedCncs: matchedCncs
+    };
+  });
+
+  return {
+    entries: entries,
+    matchStats: { matched:matchedCount, sourceLines:sourceLineCount, customerOrders:customerOrders.length, icrs:entries.length }
+  };
+}
+
+let lastImportStats = null;
+
 document.addEventListener('paste', function(e) {
   const tag = document.activeElement && document.activeElement.tagName;
-  if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+  if (tag==='INPUT'||tag==='TEXTAREA') return;
   e.preventDefault();
-  const raw = (e.clipboardData || window.clipboardData).getData('text/plain');
+  const raw = (e.clipboardData||window.clipboardData).getData('text/plain');
   if (!raw) return;
-  const parsed = parseRaw(raw);
-  if (!parsed.length) {
-    const preview = raw.split('\n').slice(0, 3).map(function(l){ return '"' + l.trim() + '"'; }).join(', ');
-    showNotice('No valid order lines found. First lines: ' + preview, 'warning', 8000);
+  const trimmed = raw.trim();
+
+  if (trimmed.charAt(0) !== '{') {
+    const preview = raw.split('\n').slice(0,3).map(function(l){ return '"'+l.trim()+'"'; }).join(', ');
+    showNotice('Only JSON paste from the bookmarklet is supported. First lines: '+preview, 'warning', 8000);
     return;
   }
-  for (const o of parsed) { if (!buffer.find(function(b){ return b.id === o.id; })) buffer.push(o); }
+  let jsonPayload;
+  try { jsonPayload = JSON.parse(trimmed); }
+  catch(e) { showNotice('Pasted data looks like JSON but failed to parse: '+e.message, 'warning', 8000); return; }
+  if (!jsonPayload.transferOrders && !jsonPayload.csaOrders) {
+    showNotice('JSON pasted, but it doesn\u2019t look like an ICR export (missing transferOrders/csaOrders).', 'warning', 8000); return;
+  }
+  const { entries, matchStats } = parseJsonImport(jsonPayload);
+  if (!entries.length) { showNotice('No ICRs found in pasted JSON.', 'warning', 5000); return; }
+  for (const o of entries) { if (!buffer.find(function(b){ return b.id===o.id; })) buffer.push(o); }
+  lastImportStats = matchStats;
   updatePasteStatus();
+  showNotice('Parsed '+matchStats.icrs+' ICR(s), '+matchStats.customerOrders+' customer order(s), '+matchStats.matched+'/'+matchStats.sourceLines+' auto-linked by reference.', 'info', 6000);
 });
+function updatePasteStatus() { document.getElementById('paste-status').textContent = buffer.length ? buffer.length+' order(s) in buffer' : ''; }
+function clearBuffer() { buffer=[]; updatePasteStatus(); }
 
-function updatePasteStatus() {
-  document.getElementById('paste-status').textContent = buffer.length ? buffer.length + ' order(s) in buffer' : '';
+// Archives an active order, recording *why* in archivalHistory. If the order
+// was archived before (id already in history_orders), prior archivalHistory
+// entries are preserved rather than overwritten, so repeat archive/reappear
+// cycles for the same id build up a full record over time.
+function archiveOrder(id, reason) {
+  const today = new Date().toISOString().slice(0,10);
+  const prevHist = history_orders[id];
+  const prevArchivalHistory = (prevHist && prevHist.archivalHistory) || [];
+  const archived = Object.assign({}, orders[id], {
+    archivedAt: today,
+    archivalHistory: [...prevArchivalHistory, { date:today, reason:reason }]
+  });
+  delete archived.hasCustomerOrders;
+  history_orders[id] = archived;
+  delete orders[id];
 }
-
-function clearBuffer() { buffer = []; updatePasteStatus(); }
 
 // ── Commit import ─────────────────────────────────────────────────────────────
 function commitImport() {
@@ -520,228 +743,267 @@ function commitImport() {
   const disappeared        = [...prevIds].filter(function(id){ return !newIds.has(id); });
   const lostCustomerOrders = [...prevIds].filter(function(id) {
     if (!newIds.has(id)) return false;
-    const next = buffer.find(function(b){ return b.id === id; });
+    const next = buffer.find(function(b){ return b.id===id; });
     return orders[id].hasCustomerOrders && next && !next.hasCustomerOrders;
   });
-  for (const id of disappeared) {
-    history_orders[id] = Object.assign({}, orders[id], { archivedAt: new Date().toISOString().slice(0, 10) });
-    delete orders[id];
-  }
+  const today = new Date().toISOString().slice(0,10);
+  for (const id of disappeared) archiveOrder(id, 'missing');
   saveHistory();
   for (const o of buffer) {
     if (!orders[o.id]) {
-      orders[o.id] = Object.assign({}, o, { skus: [], cncs: [] });
+      const hist = history_orders[o.id];
+      const skus  = o.skus  ? [...o.skus]                              : (hist ? [...(hist.skus||[])]  : []);
+      const lines = o.lines ? o.lines.map(function(l){ return {...l}; }) : (hist ? (hist.lines||[]).map(function(l){ return {...l}; }) : []);
+      orders[o.id] = Object.assign({}, o, {
+        skus: skus, lines: lines,
+        cncs: mergeCncs(hist ? hist.cncs : [], o._matchedCncs || []),
+        dateSource: o.dateSource || null,
+        trackingNo: o.trackingNo || null,
+        receivedDate: today
+      });
+      delete orders[o.id]._matchedCncs;
     } else {
-      orders[o.id].qty = o.qty;
-      orders[o.id].hasCustomerOrders = o.hasCustomerOrders;
-      if (o.date) orders[o.id].date = o.date;
-      if (!orders[o.id].cncs) orders[o.id].cncs = [];
+      orders[o.id].qty=o.qty; orders[o.id].hasCustomerOrders=o.hasCustomerOrders;
+      if (o.date && !orders[o.id].date) { orders[o.id].date=o.date; orders[o.id].dateSource=o.dateSource||null; }
+      if (o.trackingNo) orders[o.id].trackingNo=o.trackingNo;
+      if (o.lines) orders[o.id].lines = o.lines.map(function(l){ return {...l}; });
+      if (o.skus)  orders[o.id].skus  = [...o.skus];
+      if (!orders[o.id].cncs) orders[o.id].cncs=[];
+      orders[o.id].cncs = mergeCncs(orders[o.id].cncs, o._matchedCncs || []);
+      if (!orders[o.id].skus) orders[o.id].skus=[];
+      if (!orders[o.id].lines) orders[o.id].lines=[];
     }
   }
-  buffer = []; updatePasteStatus(); save(); renderAll();
-  const msgs = [];
-  if (disappeared.length)        msgs.push({ type: 'info',    label: 'Handled',                  text: disappeared.length + ' order(s) no longer visible: ' + disappeared.slice(0,10).join(', ') + (disappeared.length > 10 ? '\u2026' : '') });
-  if (lostCustomerOrders.length) msgs.push({ type: 'warning', label: 'Lost customer-order flag',  text: lostCustomerOrders.length + ' order(s): ' + lostCustomerOrders.slice(0,10).join(', ') + (lostCustomerOrders.length > 10 ? '\u2026' : '') });
-  if (!msgs.length) { showNotice('Import committed \u2014 ' + Object.keys(orders).length + ' active orders.', 'success', 4000); return; }
-  const el = document.getElementById('notices');
-  el.innerHTML = '';
+  buffer=[]; updatePasteStatus(); save(); renderAll();
+  const msgs=[];
+  if (disappeared.length)        msgs.push({ type:'info',    label:'Handled',                 text:disappeared.length+' order(s) no longer visible: '+disappeared.slice(0,10).join(', ')+(disappeared.length>10?'\u2026':'') });
+  if (lostCustomerOrders.length) msgs.push({ type:'warning', label:'Lost customer-order flag', text:lostCustomerOrders.length+' order(s): '+lostCustomerOrders.slice(0,10).join(', ')+(lostCustomerOrders.length>10?'\u2026':'') });
+  if (lastImportStats) { msgs.push({ type:'info', label:'Auto-linked', text:lastImportStats.matched+' of '+lastImportStats.sourceLines+' ICR line(s) matched to a customer order by reference.' }); lastImportStats=null; }
+  if (!msgs.length) { showNotice('Import committed \u2014 '+Object.keys(orders).length+' active orders.', 'success', 4000); return; }
+  const el=document.getElementById('notices'); el.innerHTML='';
   msgs.forEach(function(m) {
-    const d = document.createElement('div');
-    d.className = 'notice-box ' + m.type;
-    d.innerHTML = '<strong>' + m.label + ':</strong> ' + m.text +
-      ' <button style="float:right;background:none;border:none;cursor:pointer;font-size:16px;color:inherit;" onclick="this.parentElement.remove()">&#215;</button>';
+    const d=document.createElement('div'); d.className='notice-box '+m.type;
+    d.innerHTML='<strong>'+m.label+':</strong> '+m.text+' <button style="float:right;background:none;border:none;cursor:pointer;font-size:16px;color:inherit;" onclick="this.parentElement.remove()">&#215;</button>';
     el.appendChild(d);
   });
 }
 
 // ── Render ────────────────────────────────────────────────────────────────────
 function renderStats() {
-  const all = Object.values(orders);
-  const withCustomer = all.filter(function(o){ return o.hasCustomerOrders; }).length;
-  const withSkus     = all.filter(function(o){ return o.skus && o.skus.length; }).length;
-  const histCount    = Object.keys(history_orders).length;
-  document.getElementById('stats-row').innerHTML =
-    '<div class="stat-card"><div class="label">Active orders</div><div class="value">' + all.length + '</div></div>' +
-    '<div class="stat-card"><div class="label">With customer orders</div><div class="value">' + withCustomer + '</div></div>' +
-    '<div class="stat-card"><div class="label">SKUs assigned</div><div class="value">' + withSkus + '</div></div>' +
-    '<div class="stat-card" style="padding:10px 14px;">' +
-      '<div class="label">History (' + histCount + ') \u2014 ' + historyKB() + ' KB</div>' +
-      '<div style="display:flex;gap:6px;margin-top:6px;">' +
-        '<button onclick="toggleHistory()" style="font-size:11px;padding:2px 8px;' + (showHistory ? 'background:var(--blue-bg);border-color:var(--blue-border);color:var(--blue-text);' : '') + '">' + (showHistory ? 'On' : 'Off') + '</button>' +
-        '<button onclick="confirmClearHistory()" style="font-size:11px;padding:2px 8px;">Clear</button>' +
-      '</div>' +
+  const all=Object.values(orders);
+  const withCustomer=all.filter(function(o){ return o.hasCustomerOrders; }).length;
+  const histCount=Object.keys(history_orders).length;
+  document.getElementById('stats-row').innerHTML=
+    '<div class="stat-card"><div class="label">Active orders</div><div class="value">'+all.length+'</div></div>'+
+    '<div class="stat-card"><div class="label">With customer orders</div><div class="value">'+withCustomer+'</div></div>'+
+    '<div class="stat-card" style="padding:10px 14px;">'+
+      '<div class="label">History ('+histCount+') \u2014 '+historyKB()+' KB</div>'+
+      '<div style="display:flex;gap:6px;margin-top:6px;">'+
+        '<button onclick="toggleHistory()" style="font-size:11px;padding:2px 8px;'+(showHistory?'background:var(--blue-bg);border-color:var(--blue-border);color:var(--blue-text);':'')+'">'+(showHistory?'On':'Off')+'</button>'+
+        '<button onclick="confirmClearHistory()" style="font-size:11px;padding:2px 8px;">Clear</button>'+
+      '</div>'+
     '</div>';
+}
+
+function thHtml(label, badge, filterKey, isActive) {
+  const badgeHtml = badge
+    ? '<span class="filter-badge">'+badge+'</span>'
+    : (label ? ' <span style="font-size:10px;opacity:.4;">&#9662;</span>' : '<span style="font-size:10px;opacity:.4;">&#9662;</span>');
+  return '<th class="filterable'+(isActive?' filter-active':'')+'" onclick="cycleFilter(\''+filterKey+'\')" title="Click to filter">'+label+badgeHtml+'</th>';
+}
+
+function toggleSkuExpand(id) {
+  if (expandedSkuRows.has(id)) expandedSkuRows.delete(id); else expandedSkuRows.add(id);
+  renderTable();
+}
+function archivalHistoryTitle(o) {
+  if (!o.archivalHistory || !o.archivalHistory.length) return '';
+  return o.archivalHistory.map(function(a){ return a.date+' ('+a.reason+')'; }).join(', ');
 }
 
 function renderTable() {
   const skuQ = document.getElementById('sku-search').value.trim().toLowerCase();
   const idQ  = document.getElementById('id-search').value.trim().toLowerCase();
-  let rows = Object.values(orders).map(function(o){ return Object.assign({}, o, { _archived: false }); });
-  if (showHistory) {
-    rows = rows.concat(Object.values(history_orders).map(function(o){ return Object.assign({}, o, { _archived: true }); }));
-  }
+  let rows = Object.values(orders).map(function(o){ return Object.assign({},o,{_archived:false}); });
+  if (showHistory) rows = rows.concat(Object.values(history_orders).map(function(o){ return Object.assign({},o,{_archived:true}); }));
   if (skuQ) rows = rows.filter(function(o){
-    return (o.skus && o.skus.some(function(s){ return s.toLowerCase().includes(skuQ); })) ||
-           (o.cncs && o.cncs.some(function(c){ return c.toLowerCase().includes(skuQ); }));
+    return (o.skus&&o.skus.some(function(s){ return s.toLowerCase().includes(skuQ); }))||(o.cncs&&o.cncs.some(function(c){ return c.id.toLowerCase().includes(skuQ); }));
   });
   if (idQ) rows = rows.filter(function(o){ return o.id.toLowerCase().includes(idQ); });
+
+  // Column filters apply only to active rows
+  const active   = applyFilters(rows.filter(function(o){ return !o._archived; }));
+  const archived = rows.filter(function(o){ return o._archived; });
+  rows = active.concat(archived);
   rows.sort(function(a,b){ return a.id.localeCompare(b.id); });
 
-  const container = document.getElementById('table-container');
-  if (!rows.length) { container.innerHTML = '<div class="empty-state">No orders match your search.</div>'; return; }
+  const qtyActive = qtyFilter!=='all', skuActive=skuFilter!=='all', ageActive=ageFilter!=='all';
+  const colsHtml = showHistory
+    ? '<col class="c-id"><col class="c-qty"><col class="c-custord"><col class="c-date"><col class="c-skus"><col class="c-cnc"><col class="c-archived"><col class="c-action">'
+    : '<col class="c-id"><col class="c-qty"><col class="c-custord"><col class="c-date"><col class="c-skus"><col class="c-cnc"><col class="c-action">';
+  const totalCols = showHistory ? 8 : 7;
 
-  let html = '<table><thead><tr><th>Order ID</th><th>Qty</th><th>Customer orders</th><th>Date</th><th>SKUs</th><th>CNC / CSA</th>' + (showHistory ? '<th>Archived</th>' : '') + '<th></th></tr></thead><tbody>';
+  let html = '<div class="table-wrap"><table>'+colsHtml+'<thead><tr>'+
+    '<th>Order ID</th>'+
+    thHtml(qtyActive ? '' : 'Lines', QTY_BADGES[qtyFilter], 'qty', qtyActive)+
+    '<th>Order</th>'+
+    thHtml(ageActive ? '' : 'Date', AGE_BADGES[ageFilter], 'age', ageActive)+
+    thHtml('SKUs', SKU_BADGES[skuFilter], 'sku', skuActive)+
+    '<th>CNC / CSA</th>'+
+    (showHistory ? '<th style="color:var(--text3);font-weight:400;">Archived</th>' : '')+
+    '<th></th></tr></thead><tbody>';
 
-  rows.forEach(function(o) {
-    const hlSku = skuQ && o.skus && o.skus.some(function(s){ return s.toLowerCase().includes(skuQ); });
-    const hlCnc = skuQ && o.cncs && o.cncs.some(function(c){ return c.toLowerCase().includes(skuQ); });
-    const rowClass = (hlSku || hlCnc) ? 'highlight' : (o.id === copiedOrderId) ? 'copied-row' : o._archived ? 'archived-row' : '';
+  if (!rows.length) {
+    html += '<tr class="empty-row"><td colspan="'+totalCols+'">No orders match your search or filters.</td></tr>';
+  } else {
+    rows.forEach(function(o) {
+      const hlSku = skuQ&&o.skus&&o.skus.some(function(s){ return s.toLowerCase().includes(skuQ); });
+      const hlCnc = skuQ&&o.cncs&&o.cncs.some(function(c){ return c.id.toLowerCase().includes(skuQ); });
+      const rowClass = (hlSku||hlCnc)?'highlight':(o.id===copiedOrderId)?'selected-row':o._archived?'archived-row':'';
 
-    const skuTags = (o.skus || []).map(function(s){
-      return '<button class="sku-tag' + (skuQ && s.toLowerCase().includes(skuQ) ? ' highlight' : '') + '" onclick="removeTag(\'' + o.id + '\',\'sku\',\'' + s + '\')" title="Remove">' + s + ' \xd7</button>';
-    }).join('');
-    const cncTags = (o.cncs || []).map(function(c){
-      return '<button class="cnc-tag' + (skuQ && c.toLowerCase().includes(skuQ) ? ' highlight' : '') + '" onclick="removeTag(\'' + o.id + '\',\'cnc\',\'' + c + '\')" title="Remove">' + c + ' \xd7</button>';
-    }).join('');
+      // Collapsed to 4 tags + "+N" by default; click the chip to expand this row.
+      const skuLines = (o.lines && o.lines.length) ? o.lines : (o.skus||[]).map(function(s){ return { sku:s, qty:null }; });
+      const isExpanded = expandedSkuRows.has(o.id);
+      const visibleLines = (!isExpanded && skuLines.length > 4) ? skuLines.slice(0,4) : skuLines;
+      let skuTags = visibleLines.map(function(l){
+        const hl = skuQ&&l.sku.toLowerCase().includes(skuQ)?' highlight':'';
+        const label = (l.qty!=null) ? (l.sku+'\u00d7'+l.qty) : l.sku;
+        const title = (l.qty!=null) ? (l.sku+' \u00d7 '+l.qty) : l.sku;
+        return '<span class="sku-tag'+hl+'" onclick="copyTag(\''+l.sku+'\');event.stopPropagation()" title="'+title+'">'+label+'</span>';
+      }).join('');
+      if (skuLines.length > 4) {
+        skuTags += isExpanded
+          ? '<span class="sku-tag more-tag" onclick="toggleSkuExpand(\''+o.id+'\');event.stopPropagation()" title="Show fewer">\u2212 less</span>'
+          : '<span class="sku-tag more-tag" onclick="toggleSkuExpand(\''+o.id+'\');event.stopPropagation()" title="Show all '+skuLines.length+'">+'+(skuLines.length-4)+'</span>';
+      }
 
-    const skuInput = o._archived ? '' :
-      '<button class="add-tag-btn" onclick="startAddTag(\'' + o.id + '\',\'sku\')">+ SKU</button>' +
-      '<span id="tag-input-sku-' + o.id + '" class="inline-tag-form" style="display:none;">' +
-        '<input class="inline-input" type="text" id="tag-val-sku-' + o.id + '" placeholder="SKU" onkeydown="tagKeydown(event,\'' + o.id + '\',\'sku\')">' +
-        '<button style="font-size:11px;padding:2px 6px;" onclick="confirmAddTag(\'' + o.id + '\',\'sku\')">Add</button>' +
-        '<button style="font-size:11px;padding:2px 6px;" onclick="cancelAddTag(\'' + o.id + '\',\'sku\')">\xd7</button>' +
-      '</span>';
-    const cncInput = o._archived ? '' : '<button class="add-tag-btn cnc" onclick="addCncFromClipboard(\'' + o.id + '\')">+ CNC/CSA</button>';
-    const removeBtn = o._archived
-      ? '<button class="remove-btn" onclick="confirmDeleteArchived(\'' + o.id + '\')" title="Delete from history">\u2715</button>'
-      : '<button class="remove-btn" onclick="confirmRemoveOrder(\'' + o.id + '\')" title="Archive order">\u2715</button>';
+      // Auto-linked cncs (source:'auto', from JSON import) show a check mark and a
+      // title with status/printed/date so the operator can see provenance at a glance.
+      const cncTags = (o.cncs||[]).map(function(c){
+        const hl = skuQ&&c.id.toLowerCase().includes(skuQ)?' highlight':'';
+        const printedMark = c.printed ? '\u2713 ' : '';
+        const titleParts = [];
+        if (c.source==='auto') titleParts.push('Auto-linked');
+        if (c.status) titleParts.push('Status: '+c.status);
+        titleParts.push(c.printed ? 'Label printed' : 'Label not printed');
+        if (c.date) titleParts.push('Date: '+c.date);
+        return '<span class="cnc-tag'+hl+'" onclick="copyTag(\''+c.id+'\');event.stopPropagation()" title="'+titleParts.join(' \u2014 ')+'">'+printedMark+c.id+'</span>';
+      }).join('');
 
-    html += '<tr class="' + rowClass + '">' +
-      '<td class="order-id' + (o._archived ? ' archived-id' : '') + '" onclick="copyOrderId(\'' + o.id + '\')" title="Click to copy">' + o.id + '<span class="copy-hint">copy</span></td>' +
-      '<td>' + o.qty + '</td>' +
-      '<td><span class="badge ' + (o.hasCustomerOrders ? 'yes' : 'no') + '">' + (o.hasCustomerOrders ? 'Yes' : 'No') + '</span></td>' +
-      '<td style="color:var(--text3);font-size:12px;">' + (o.date || '\u2014') + '</td>' +
-      '<td><div class="tags-cell">' + skuTags + skuInput + '</div></td>' +
-      '<td><div class="tags-cell">' + cncTags + cncInput + '</div></td>' +
-      (showHistory ? '<td style="color:var(--text3);font-size:12px;">' + (o._archived ? (o.archivedAt || '\u2014') : '') + '</td>' : '') +
-      '<td>' + removeBtn + '</td>' +
-    '</tr>';
-  });
-  html += '</tbody></table>';
-  container.innerHTML = html;
+      const removeBtn = o._archived
+        ? '<button class="remove-btn" onclick="confirmDeleteArchived(\''+o.id+'\');event.stopPropagation()" title="Delete from history">\u2715</button>'
+        : '<button class="remove-btn" onclick="confirmRemoveOrder(\''+o.id+'\');event.stopPropagation()" title="Archive order">\u2715</button>';
+
+      // Single Date column: earliest of ICR date / linked CNC date / date imported.
+      // Full breakdown is in the tooltip so the individual origin dates aren't lost.
+      const dVal = earliestDate(o);
+      const dTitle = dateBreakdown(o) + (o._archived && o.archivalHistory && o.archivalHistory.length ? ' \u2014 Archived: '+archivalHistoryTitle(o) : '');
+      const dateCell = '<td class="rcvd-cell" title="'+dTitle+'" style="color:var(--text3);font-size:12px;">'+(dVal||'\u2014')+'</td>';
+
+      html += '<tr class="'+rowClass+'" onclick="selectRow(\''+o.id+'\')">'+
+        '<td class="order-id'+(o._archived?' archived-id':'')+'" onclick="copyOrderId(\''+o.id+'\');event.stopPropagation()" title="Click to copy">'+o.id+'</td>'+
+        '<td>'+o.qty+'</td>'+
+        '<td><span class="badge '+(o.hasCustomerOrders?'yes':'no')+'">'+(o.hasCustomerOrders?'Yes':'No')+'</span></td>'+
+        dateCell+
+        '<td><div class="tags-cell">'+skuTags+'</div></td>'+
+        '<td><div class="tags-cell">'+cncTags+'</div></td>'+
+        (showHistory ? '<td style="color:var(--text3);font-size:12px;" title="'+(o._archived?archivalHistoryTitle(o):'')+'">'+(o._archived?(o.archivedAt||'\u2014'):'')+'</td>' : '')+
+        '<td>'+removeBtn+'</td>'+
+      '</tr>';
+    });
+  }
+  html += '</tbody></table></div>';
+  document.getElementById('table-container').innerHTML = html;
 }
 
 function renderAll() { renderStats(); renderTable(); }
+function toggleHistory() { showHistory=!showHistory; renderAll(); }
 
-function toggleHistory() { showHistory = !showHistory; renderAll(); }
-
-// ── Tag / SKU / CNC actions ───────────────────────────────────────────────────
-function startAddTag(id, type) {
-  document.getElementById('tag-input-' + type + '-' + id).style.display = 'inline-flex';
-  document.getElementById('tag-val-'   + type + '-' + id).focus();
+// ── Copy / select ─────────────────────────────────────────────────────────────
+async function copyTag(val) {
+  try { await navigator.clipboard.writeText(val); }
+  catch(e) { const ta=document.createElement('textarea'); ta.value=val; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta); }
+  showNotice('Copied '+val+' to clipboard','info',2000);
 }
-function cancelAddTag(id, type) {
-  document.getElementById('tag-input-' + type + '-' + id).style.display = 'none';
-  document.getElementById('tag-val-'   + type + '-' + id).value = '';
-}
-function tagKeydown(e, id, type) {
-  if (e.key === 'Enter')  confirmAddTag(id, type);
-  if (e.key === 'Escape') cancelAddTag(id, type);
-}
-function confirmAddTag(id, type) {
-  const val = document.getElementById('tag-val-' + type + '-' + id).value.trim().toUpperCase();
-  if (!val) return;
-  const field = type === 'sku' ? 'skus' : 'cncs';
-  if (!orders[id][field]) orders[id][field] = [];
-  if (!orders[id][field].includes(val)) { orders[id][field].push(val); save(); }
-  renderAll();
-}
-function removeTag(id, type, val) {
-  if (!orders[id]) return;
-  const field = type === 'sku' ? 'skus' : 'cncs';
-  orders[id][field] = (orders[id][field] || []).filter(function(v){ return v !== val; });
-  save(); renderAll();
-}
-
-async function addCncFromClipboard(orderId) {
-  let text = '';
-  try { text = await navigator.clipboard.readText(); }
-  catch(e) { showNotice('Could not read clipboard \u2014 try clicking the page first.', 'warning', 5000); return; }
-  const m = text.trim().match(/((?:CNC|CSA)\d{8}[A-Z]?)/i);
-  if (!m) { showNotice('No CNC/CSA found in clipboard. Got: "' + text.trim().slice(0, 40) + '"', 'warning', 5000); return; }
-  const val = m[1].toUpperCase();
-  if (!orders[orderId].cncs) orders[orderId].cncs = [];
-  if (!orders[orderId].cncs.includes(val)) { orders[orderId].cncs.push(val); save(); renderAll(); showNotice('Added ' + val + ' to ' + orderId, 'success', 2500); }
-  else showNotice(val + ' already on this order', 'info', 2500);
-}
-
-async function copyOrderId(id) {
+function selectRow(id) {
+  if (copiedOrderId === id) return; // already selected, no re-render needed
   copiedOrderId = id;
-  try { await navigator.clipboard.writeText(id); }
-  catch(e) { const ta = document.createElement('textarea'); ta.value=id; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta); }
   renderTable();
-  showNotice('Copied ' + id + ' to clipboard', 'info', 2000);
+}
+async function copyOrderId(id) {
+  copiedOrderId=id;
+  try { await navigator.clipboard.writeText(id); }
+  catch(e) { const ta=document.createElement('textarea'); ta.value=id; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta); }
+  renderTable();
+  showNotice('Copied '+id+' to clipboard','info',2000);
 }
 
 // ── Remove / archive ──────────────────────────────────────────────────────────
 function confirmRemoveOrder(id) {
-  showModal('Archive ' + id + '?', 'Move to history. You can view or delete it there.', [
-    { label: 'Archive', cls: 'danger', action: function() {
-      history_orders[id] = Object.assign({}, orders[id], { archivedAt: new Date().toISOString().slice(0,10) });
-      delete orders[id]; save(); saveHistory(); renderAll(); closeModal();
+  showModal('Archive '+id+'?', 'Move to history. You can view or delete it there.', [
+    { label:'Archive', cls:'danger', action:function() {
+      archiveOrder(id, 'manual');
+      save(); saveHistory(); renderAll(); closeModal();
     }},
-    { label: 'Cancel', cls: '', action: closeModal }
+    { label:'Cancel', cls:'', action:closeModal }
   ]);
 }
 function confirmDeleteArchived(id) {
-  showModal('Delete ' + id + ' from history?', 'This cannot be undone.', [
-    { label: 'Delete', cls: 'danger', action: function() { delete history_orders[id]; saveHistory(); renderAll(); closeModal(); }},
-    { label: 'Cancel', cls: '', action: closeModal }
+  showModal('Delete '+id+' from history?', 'This cannot be undone.', [
+    { label:'Delete', cls:'danger', action:function(){ delete history_orders[id]; saveHistory(); renderAll(); closeModal(); }},
+    { label:'Cancel', cls:'', action:closeModal }
   ]);
 }
 function confirmClearAll() {
-  showModal('Clear all active orders?', Object.keys(orders).length + ' orders will be deleted (not archived).', [
-    { label: 'Clear all', cls: 'danger', action: function() { orders={}; save(); renderAll(); closeModal(); }},
-    { label: 'Cancel', cls: '', action: closeModal }
+  showModal('Clear all active orders?', Object.keys(orders).length+' orders will be deleted (not archived).', [
+    { label:'Clear all', cls:'danger', action:function(){ orders={}; save(); renderAll(); closeModal(); }},
+    { label:'Cancel', cls:'', action:closeModal }
   ]);
 }
 function confirmClearHistory() {
-  showModal('Clear history?', Object.keys(history_orders).length + ' archived orders (' + historyKB() + ' KB) will be permanently deleted.', [
-    { label: 'Clear history', cls: 'danger', action: function() { history_orders={}; saveHistory(); renderAll(); closeModal(); }},
-    { label: 'Cancel', cls: '', action: closeModal }
+  showModal('Clear history?', Object.keys(history_orders).length+' archived orders ('+historyKB()+' KB) will be permanently deleted.', [
+    { label:'Clear history', cls:'danger', action:function(){ history_orders={}; saveHistory(); renderAll(); closeModal(); }},
+    { label:'Cancel', cls:'', action:closeModal }
   ]);
 }
 
 // ── Modal ─────────────────────────────────────────────────────────────────────
-function showModal(title, body, actions) {
-  document.getElementById('modal-title').textContent = title;
-  document.getElementById('modal-body').textContent  = body;
-  const el = document.getElementById('modal-actions');
-  el.innerHTML = '';
-  actions.forEach(function(a) {
-    const btn = document.createElement('button');
-    btn.textContent = a.label;
-    if (a.cls) btn.className = a.cls;
-    btn.onclick = a.action;
-    el.appendChild(btn);
+function showModal(title,body,actions) {
+  document.getElementById('modal-title').textContent=title;
+  document.getElementById('modal-body').textContent=body;
+  const el=document.getElementById('modal-actions'); el.innerHTML='';
+  actions.forEach(function(a){
+    const btn=document.createElement('button'); btn.textContent=a.label;
+    if (a.cls) btn.className=a.cls; btn.onclick=a.action; el.appendChild(btn);
   });
   document.getElementById('modal-overlay').classList.add('open');
 }
 function closeModal() { document.getElementById('modal-overlay').classList.remove('open'); }
-document.getElementById('modal-overlay').addEventListener('click', function(e) { if (e.target === this) closeModal(); });
+document.getElementById('modal-overlay').addEventListener('click', function(e){ if (e.target===this) closeModal(); });
 
 // ── Misc ──────────────────────────────────────────────────────────────────────
-function clearSearch() { document.getElementById('sku-search').value=''; document.getElementById('id-search').value=''; renderTable(); }
-
-let noticeTimer = null;
-function showNotice(msg, type, ms) {
-  const el = document.getElementById('notices');
-  el.innerHTML = '<div class="notice-box ' + type + '">' + msg + '</div>';
+function clearSearch() {
+  document.getElementById('sku-search').value='';
+  document.getElementById('id-search').value='';
+  qtyFilter='le100'; skuFilter='all'; ageFilter='all';
+  renderTable();
+}
+let noticeTimer=null;
+function showNotice(msg,type,ms) {
+  const el=document.getElementById('notices');
+  el.innerHTML='<div class="notice-box '+type+'">'+msg+'</div>';
   clearTimeout(noticeTimer);
-  noticeTimer = setTimeout(function() { el.innerHTML = ''; }, ms || 4000);
+  noticeTimer=setTimeout(function(){ el.innerHTML=''; }, ms||4000);
 }
 
-// ── Wire up sync buttons after DOM ready ──────────────────────────────────────
+document.addEventListener('mousedown', function(e) {
+  if (!copiedOrderId) return;
+  if (!document.getElementById('table-container').contains(e.target)) {
+    copiedOrderId = null;
+    renderTable();
+  }
+});
+
 document.getElementById('btn-export').addEventListener('click', doExport);
 document.getElementById('btn-copy-full').addEventListener('click', copyFullExport);
 document.getElementById('btn-import').addEventListener('click', doImport);
