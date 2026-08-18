@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>ICR Manager v1.8.1</title>
+<title>ICR Manager v1.8.2</title>
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
   :root {
@@ -297,7 +297,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script>
-const VERSION = 'v1.8.1';
+const VERSION = 'v1.8.2';
 
 // ── Storage keys ──────────────────────────────────────────────────────────────
 const STORAGE_KEY  = 'order_manager_v1';
@@ -326,7 +326,7 @@ const AGE_STATES = ['all', 'old'];
 // How many days before an order's earliest known date (ICR / linked CNC / date
 // imported) counts as "old" for the age filter. Hardcoded for now; move to a
 // real settings UI once the table view gets its full overhaul.
-const AGE_FILTER_DAYS = 14;
+const AGE_FILTER_DAYS = 9;
 
 // NOTE: since v1.7.0, o.qty for JSON-imported orders is a count of distinct SKUs
 // (matching the internal tool's own list view), not a total unit quantity as it
@@ -334,7 +334,7 @@ const AGE_FILTER_DAYS = 14;
 // change and are unlikely to be useful anymore — left as-is pending the UX branch.
 const QTY_BADGES = { all: null, le100: '\u2264100', gt100: '>100' };
 const SKU_BADGES = { all: null, sku: 'has SKU', nosku: 'no SKU' };
-const AGE_BADGES = { all: null, old: '>'+Math.round(AGE_FILTER_DAYS/7)+' wks' };
+const AGE_BADGES = { all: null, old: '>9days' };
 
 function cycleFilter(which) {
   if (which === 'qty') { const i = QTY_STATES.indexOf(qtyFilter); qtyFilter = QTY_STATES[(i+1) % QTY_STATES.length]; }
