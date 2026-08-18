@@ -867,7 +867,7 @@ function renderTable() {
       const visibleLines = (!isExpanded && skuLines.length > 4) ? skuLines.slice(0,4) : skuLines;
       let skuTags = visibleLines.map(function(l){
         const hl = skuQ&&l.sku.toLowerCase().includes(skuQ)?' highlight':'';
-        const label = (l.qty!=null) ? (l.sku+'\u00d7'+l.qty) : l.sku;
+        const label = (l.qty!=null) ? (l.sku+' \u00d7 '+l.qty) : l.sku;
         const title = (l.qty!=null) ? (l.sku+' \u00d7 '+l.qty) : l.sku;
         return '<span class="sku-tag'+hl+'" onclick="copyTag(\''+l.sku+'\');event.stopPropagation()" title="'+title+'">'+label+'</span>';
       }).join('');
