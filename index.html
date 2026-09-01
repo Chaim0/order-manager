@@ -843,6 +843,7 @@ async function commitImport() {
       }
     } catch(e) { }
   }
+  }
 
   if (!buffer.length) { showNotice('Buffer is empty \u2014 paste order data anywhere on the page first or click Import to read clipboard.', 'warning', 3000); return; }
   const prevIds = new Set(Object.keys(orders));
