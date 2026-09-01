@@ -343,7 +343,6 @@
 <script>
 const VERSION = 'v1.9.0';
 
-// ── Storage keys ──────────────────────────────────────────────────────────────
 const STORAGE_KEY  = 'order_manager_v1';
 const HISTORY_KEY  = 'order_manager_history_v1';
 const CONFIG_KEY   = 'order_manager_config_v1';
@@ -365,7 +364,6 @@ let sessionArchivedIds = new Set();
 let icrUrlTemplate = '';
 let cncUrlTemplate = '';
 
-// ── Column filters ────────────────────────────────────────────────────────────
 let qtyFilter = 'le100'; // 'all' | 'le100' | 'gt100' — le100 is the common case, so it's the default
 let skuFilter = 'all';   // 'all' | 'sku'   | 'nosku'
 let ageFilter = 'all';   // 'all' | 'old'   (earliest known date older than AGE_FILTER_DAYS)
@@ -441,7 +439,6 @@ function applyFilters(rows) {
   return rows;
 }
 
-// ── Schema migration ─────────────────────────────────────────────────────────
 // v1.7.0: cncs become objects (id/source/printed/status/statusHistory/date/dateSource)
 // instead of plain strings; orders gain a `lines` array ({sku,qty}) for per-SKU
 // quantity from the JSON import, plus `trackingNo` and `dateSource`.
@@ -464,7 +461,6 @@ function migrateOrder(o) {
   if (!o.archivalHistory) o.archivalHistory = o.archivedAt ? [{ date:o.archivedAt, reason:'unknown' }] : [];
 }
 
-// ── Persist ───────────────────────────────────────────────────────────────────
 function load() {
   try { const s = localStorage.getItem(STORAGE_KEY);  if (s) orders         = JSON.parse(s); } catch(e) { orders = {}; }
   try { const s = localStorage.getItem(HISTORY_KEY);  if (s) history_orders = JSON.parse(s); } catch(e) { history_orders = {}; }
@@ -489,7 +485,6 @@ function loadConfig()  {
 }
 function historyKB()   { return (JSON.stringify(history_orders).length / 1024).toFixed(1); }
 
-// ── Base36 ────────────────────────────────────────────────────────────────────
 const B36 = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ';
 function b36encode(bytes) {
   let nums = Array.from(bytes), result = '', leadingZeros = 0;
@@ -512,7 +507,6 @@ function b36decode(str) {
   return new Uint8Array(nums);
 }
 
-// ── Encode / decode state ─────────────────────────────────────────────────────
 function encodeChunked(obj, chunkSize) {
   const compressed = pako.deflate(new TextEncoder().encode(JSON.stringify(obj)), { level:9 });
   const full = b36encode(compressed);
@@ -538,7 +532,6 @@ function decodeChunks(strings) {
   return JSON.parse(new TextDecoder().decode(pako.inflate(compressed)));
 }
 
-// ── QR rendering ──────────────────────────────────────────────────────────────
 function renderQRChunks(chunks) {
   const strip = document.getElementById('qr-strip'); strip.innerHTML = '';
   const sz = chunks.length === 1 ? 240 : 180;
@@ -568,7 +561,6 @@ function renderQRChunks(chunks) {
   });
 }
 
-// ── Export ────────────────────────────────────────────────────────────────────
 function doExport() {
   try {
     const chunkSize = parseInt(document.getElementById('qr-size-select').value, 10);
@@ -589,7 +581,6 @@ function copyFullExport() {
   copyToClip(lastExportChunks.join('\n'));
 }
 
-// ── Import ────────────────────────────────────────────────────────────────────
 function renderScanProgress() {
   const el = document.getElementById('scan-progress');
   const keys = Object.keys(scannedChunks).map(Number).sort(function(a,b){ return a-b; });
@@ -639,7 +630,6 @@ function doImport() {
   } catch(e) { status.textContent='Error: '+e.message; }
 }
 
-// ── Date normalisation ────────────────────────────────────────────────────────
 function normalizeDate(raw) {
   if (!raw) return null;
   const s = raw.trim(); if (!s) return null;
@@ -685,7 +675,6 @@ function isValidISODate(iso) {
   return dt.getFullYear()===y && dt.getMonth()===m-1 && dt.getDate()===d;
 }
 
-// ── JSON import (bookmarklet export: transferOrders + csaOrders) ──────────────
 // Merges a matched/updated cnc into an order's existing cncs list in place.
 // `existingList` may contain manually-tagged entries (source:'manual'); those
 // get upgraded to source:'auto' once the JSON import confirms a real match,
@@ -819,30 +808,33 @@ function archiveOrder(id, reason) {
   sessionArchivedIds.add(id);
 }
 
-// ── Commit import ─────────────────────────────────────────────────────────────
 async function commitImport() {
-  // Try clipboard first if available
-  if (navigator.clipboard && navigator.clipboard.readText) {
     try {
       const clipText = await navigator.clipboard.readText();
-      if (clipText && clipText.trim().charAt(0) === '{') {
-        try {
-          const payload = JSON.parse(clipText.trim());
-          if (payload.transferOrders || payload.csaOrders) {
-            const { entries, matchStats } = parseJsonImport(payload);
-            if (entries.length) {
-              for (const o of entries) {
-                if (!buffer.find(function(b){ return b.id===o.id; })) buffer.push(o);
+      if (clipText && clipText.trim()) {
+        const trimmed = clipText.trim();
+        if (trimmed.charAt(0) === '{') {
+          try {
+            const payload = JSON.parse(trimmed);
+            if (payload.transferOrders || payload.csaOrders) {
+              const { entries, matchStats } = parseJsonImport(payload);
+              if (entries.length) {
+                for (const o of entries) {
+                  if (!buffer.find(function(b){ return b.id===o.id; })) buffer.push(o);
+                }
+                lastImportStats = matchStats;
+                updatePasteStatus();
+                showNotice('Clipboard: '+matchStats.icrs+' ICR(s), '+matchStats.matched+'/'+matchStats.sourceLines+' linked.', 'success', 3000);
               }
-              lastImportStats = matchStats;
-              updatePasteStatus();
-              showNotice('Parsed from clipboard: '+matchStats.icrs+' ICR(s), '+matchStats.matched+'/'+matchStats.sourceLines+' auto-linked.', 'info', 4000);
             }
+          } catch(e) {
+            showNotice('Clipboard JSON parse error: '+e.message, 'warning', 3000);
           }
-        } catch(e) { }
+        }
       }
-    } catch(e) { }
-  }
+    } catch(e) {
+      console.log('Clipboard read failed:', e.message);
+    }
   }
 
   if (!buffer.length) { showNotice('Buffer is empty \u2014 paste order data anywhere on the page first or click Import to read clipboard.', 'warning', 3000); return; }
@@ -896,7 +888,6 @@ async function commitImport() {
   });
 }
 
-// ── Render ────────────────────────────────────────────────────────────────────
 function renderStats() {
   const all=Object.values(orders);
   const withCustomer=all.filter(function(o){ return o.hasCustomerOrders; }).length;
@@ -1079,7 +1070,6 @@ function archiveCheckboxClick(id) {
 function renderAll() { renderStats(); renderTable(); }
 function toggleHistory() { showHistory=!showHistory; renderAll(); }
 
-// ── Copy / select ─────────────────────────────────────────────────────────────
 function openUrl(template, id) {
   if (!template) return false;
   let url = template.includes('{id}') ? template.replace('{id}', id) : template + id;
@@ -1106,7 +1096,6 @@ async function copyOrderId(id) {
   if (!icrUrlTemplate) showNotice('Set an ICR URL in Settings to enable click-through','info',3000);
 }
 
-// ── Remove / archive ──────────────────────────────────────────────────────────
 function confirmRemoveOrder(id) {
   showModal('Archive '+id+'?', 'Move to history. You can view or delete it there.', [
     { label:'Archive', cls:'danger', action:function() {
@@ -1135,7 +1124,6 @@ function confirmClearHistory() {
   ]);
 }
 
-// ── Modal ─────────────────────────────────────────────────────────────────────
 function showModal(title,body,actions) {
   document.getElementById('modal-title').textContent=title;
   document.getElementById('modal-body').textContent=body;
@@ -1149,7 +1137,6 @@ function showModal(title,body,actions) {
 function closeModal() { document.getElementById('modal-overlay').classList.remove('open'); }
 document.getElementById('modal-overlay').addEventListener('click', function(e){ if (e.target===this) closeModal(); });
 
-// ── Misc ──────────────────────────────────────────────────────────────────────
 function clearSearch() {
   document.getElementById('sku-search').value='';
   document.getElementById('id-search').value='';
