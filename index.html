@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>ICR Manager v1.8.2</title>
+<title>ICR Manager v1.9.0</title>
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
   :root {
@@ -204,6 +204,30 @@
   .remove-btn { background:none; border:none; color:var(--text3); cursor:pointer; font-size:13px; padding:2px 4px; border-radius:4px; }
   .remove-btn:hover { color:var(--red-text); background:var(--red-bg); }
 
+  /* Checkbox archive */
+  .archive-checkbox { width:20px; height:20px; cursor:pointer; }
+
+  /* Settings panel */
+  .settings-panel { background:var(--surface); border:0.5px solid var(--border); border-radius:var(--radius-lg); margin-bottom:14px; overflow:hidden; }
+  .settings-panel summary { padding:10px 16px; font-size:13px; font-weight:500; cursor:pointer; color:var(--text2); list-style:none; user-select:none; }
+  .settings-panel summary::-webkit-details-marker { display:none; }
+  .settings-panel[open] summary { border-bottom:0.5px solid var(--border); color:var(--text); }
+  .settings-body { display:grid; grid-template-columns:1fr 1fr; gap:16px; padding:14px 16px; }
+  @media (max-width:640px) { .settings-body { grid-template-columns:1fr; } }
+  .settings-col { display:flex; flex-direction:column; gap:6px; }
+  .settings-label { font-size:12px; color:var(--text3); }
+  .settings-input { font-size:13px; }
+
+  /* Filter buttons row */
+  .filter-buttons { display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-bottom:12px; }
+  .filter-button { background:var(--surface); border:0.5px solid var(--border2); border-radius:var(--radius); color:var(--text); cursor:pointer; font-family:inherit; font-size:12px; font-weight:500; padding:6px 12px; transition:all .12s; white-space:nowrap; }
+  .filter-button:hover { background:var(--surface2); }
+  .filter-button.active { background:var(--blue-bg); border-color:var(--blue-border); color:var(--blue-text); }
+
+  /* Counter */
+  .counter { font-size:13px; color:var(--text2); font-weight:500; }
+  .counter .total { font-size:11px; color:var(--text3); }
+
   /* Row states */
   .highlight      { background:rgba(239,159,39,0.2); }
   .selected-row   { background:rgba(55,138,221,0.12); }
@@ -230,43 +254,57 @@
   <div id="notices-top" style="display:none"></div>
 
   <div class="import-hint">
-    <div><strong>Importing:</strong> paste the bookmarklet's JSON output anywhere on the page (not into a search field) to add to buffer. When done pasting, click <strong>Commit import</strong>.</div>
+    <div><strong>Importing:</strong> paste the bookmarklet's JSON output anywhere on the page (not into a search field) or click <strong>Import</strong> to read clipboard. When done, click <strong>Import</strong> to commit.</div>
     <div style="display:flex;gap:8px;align-items:center;margin-left:auto;">
       <span id="paste-status"></span>
-      <button class="primary" onclick="commitImport()">Commit import</button>
+      <button class="primary" id="btn-commit-import" onclick="commitImport()">Import</button>
       <button onclick="clearBuffer()">Clear buffer</button>
     </div>
   </div>
 
-  <details class="sync-panel">
-    <summary>&#8597; Sync state between machines</summary>
-    <div class="sync-body">
-      <div class="sync-col">
-        <div class="sync-label" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-          <span>Export</span>
+  <details class="settings-panel">
+    <summary>⚙ Settings</summary>
+    <div class="settings-body">
+      <div class="settings-col">
+        <div class="settings-label">ICR URL template</div>
+        <input type="text" id="icr-url-template" class="settings-input" placeholder="e.g. https://icr.example.com/orders/{id}">
+        <div style="font-size:11px;color:var(--text3);">Use {id} as placeholder for order ID</div>
+      </div>
+      <div class="settings-col">
+        <div class="settings-label">CNC/CSA URL template</div>
+        <input type="text" id="cnc-url-template" class="settings-input" placeholder="e.g. https://cnc.example.com/search?q={id}">
+        <div style="font-size:11px;color:var(--text3);">Use {id} as placeholder for order ID</div>
+      </div>
+      <div class="settings-col" style="grid-column:1/-1;">
+        <div class="settings-label">Export / Import state</div>
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
           <span style="font-size:11px;color:var(--text3);">QR chunk size:</span>
-          <select id="qr-size-select">
+          <select id="qr-size-select" style="font-size:12px; padding:4px 8px;">
             <option value="486">Small (~500 chars, easiest to scan)</option>
             <option value="1486" selected>Medium (~1500 chars)</option>
             <option value="4282">Large (~4300 chars, single QR if possible)</option>
           </select>
         </div>
-        <div id="export-info" style="font-size:12px;color:var(--text3);min-height:16px;"></div>
+        <div id="export-info" style="font-size:12px;color:var(--text3);min-height:16px;margin-top:8px;"></div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:4px;align-items:center;">
           <button class="primary" id="btn-export">Generate QR codes</button>
           <button id="btn-copy-full">Copy full string</button>
         </div>
         <div id="qr-strip"></div>
-      </div>
-      <div class="sync-col">
-        <div class="sync-label">Import &mdash; paste full exported string, or scan QR chunks one at a time</div>
-        <textarea id="import-box" rows="5" placeholder="Paste ICRv1: string here&#10;&#10;If scanning QR codes: paste each chunk and click Import. Chunks accumulate until all are received."></textarea>
-        <div style="display:flex;gap:8px;margin-top:6px;flex-wrap:wrap;align-items:center;">
-          <button class="primary" id="btn-import">Import state</button>
-          <button id="btn-clear-import">Clear</button>
-          <span id="import-status" style="font-size:12px;color:var(--text3);"></span>
+        <div style="margin-top:12px;border-top:0.5px solid var(--border);padding-top:12px;">
+          <div class="settings-label">Import from exported string or QR codes</div>
+          <textarea id="import-box" rows="5" placeholder="Paste ICRv1: string here&#10;&#10;If scanning QR codes: paste each chunk and click Import. Chunks accumulate until all are received." style="margin-top:6px;"></textarea>
+          <div style="display:flex;gap:8px;margin-top:6px;flex-wrap:wrap;align-items:center;">
+            <button class="primary" id="btn-import">Import state</button>
+            <button id="btn-clear-import">Clear</button>
+            <span id="import-status" style="font-size:12px;color:var(--text3);"></span>
+          </div>
+          <div id="scan-progress" style="margin-top:8px;font-size:12px;color:var(--text3);"></div>
         </div>
-        <div id="scan-progress" style="margin-top:8px;font-size:12px;color:var(--text3);"></div>
+      </div>
+      <div class="settings-col" style="grid-column:1/-1;border-top:0.5px solid var(--border);padding-top:12px;margin-top:8px;">
+        <div class="settings-label">Danger zone</div>
+        <button class="danger" onclick="confirmClearAll()" style="width:fit-content;margin-top:6px;">Clear all orders</button>
       </div>
     </div>
   </details>
@@ -280,7 +318,13 @@
     <input type="text" id="sku-search" placeholder="Search by SKU or CNC/CSA&hellip;" oninput="renderTable()" />
     <input type="text" id="id-search"  placeholder="Search by order ID&hellip;" oninput="renderTable()" />
     <button onclick="clearSearch()">Clear search</button>
-    <button class="danger" onclick="confirmClearAll()">Clear all orders</button>
+  </div>
+
+  <div class="filter-buttons">
+    <span class="counter" id="counter"></span>
+    <button class="filter-button" id="qty-filter-btn" onclick="cycleFilter('qty')">Lines <span id="qty-badge"></span></button>
+    <button class="filter-button" id="sku-filter-btn" onclick="cycleFilter('sku')">SKUs <span id="sku-badge"></span></button>
+    <button class="filter-button" id="age-filter-btn" onclick="cycleFilter('age')">Age <span id="age-badge"></span></button>
   </div>
 
   <div id="table-container"></div>
@@ -297,11 +341,12 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script>
-const VERSION = 'v1.8.2';
+const VERSION = 'v1.9.0';
 
 // ── Storage keys ──────────────────────────────────────────────────────────────
 const STORAGE_KEY  = 'order_manager_v1';
 const HISTORY_KEY  = 'order_manager_history_v1';
+const CONFIG_KEY   = 'order_manager_config_v1';
 
 let orders         = {};
 let history_orders = {};
@@ -313,6 +358,12 @@ let lastExportChunks = [];
 // SKU tag lists collapse to 4 + "+N" past that; toggling here expands a single
 // row for readability. Intentionally not persisted — resets on reload.
 let expandedSkuRows = new Set();
+// Session-only set of order IDs archived this session. Allows archived rows to
+// show as dimmed with checked box until reload.
+let sessionArchivedIds = new Set();
+// URL templates for click-to-open
+let icrUrlTemplate = '';
+let cncUrlTemplate = '';
 
 // ── Column filters ────────────────────────────────────────────────────────────
 let qtyFilter = 'le100'; // 'all' | 'le100' | 'gt100' — le100 is the common case, so it's the default
@@ -336,11 +387,29 @@ const QTY_BADGES = { all: null, le100: '\u2264100', gt100: '>100' };
 const SKU_BADGES = { all: null, sku: 'has SKU', nosku: 'no SKU' };
 const AGE_BADGES = { all: null, old: '>9days' };
 
+let sortBy = 'id';    // 'id' | 'qty' | 'hasCustomerOrders' | 'date' | 'skus' | 'cncs' | 'archivedAt'
+let sortAsc = true;   // ascending vs descending
+
 function cycleFilter(which) {
   if (which === 'qty') { const i = QTY_STATES.indexOf(qtyFilter); qtyFilter = QTY_STATES[(i+1) % QTY_STATES.length]; }
   else if (which === 'sku') { const i = SKU_STATES.indexOf(skuFilter); skuFilter = SKU_STATES[(i+1) % SKU_STATES.length]; }
   else if (which === 'age') { const i = AGE_STATES.indexOf(ageFilter); ageFilter = AGE_STATES[(i+1) % AGE_STATES.length]; }
   renderTable();
+}
+function cycleSort(col) {
+  if (sortBy === col) sortAsc = !sortAsc; else { sortBy = col; sortAsc = true; }
+  renderTable();
+}
+function updateFilterButtons() {
+  document.getElementById('qty-badge').textContent = QTY_BADGES[qtyFilter] || '';
+  document.getElementById('sku-badge').textContent = SKU_BADGES[skuFilter] || '';
+  document.getElementById('age-badge').textContent = AGE_BADGES[ageFilter] || '';
+  const qBtn = document.getElementById('qty-filter-btn');
+  const sBtn = document.getElementById('sku-filter-btn');
+  const aBtn = document.getElementById('age-filter-btn');
+  if (qtyFilter !== 'all') qBtn.classList.add('active'); else qBtn.classList.remove('active');
+  if (skuFilter !== 'all') sBtn.classList.add('active'); else sBtn.classList.remove('active');
+  if (ageFilter !== 'all') aBtn.classList.add('active'); else aBtn.classList.remove('active');
 }
 
 // Earliest of the three "when did we first know about this" dates: the ICR's
@@ -407,9 +476,17 @@ function load() {
   // rather than only whenever the next unrelated save() happens to fire.
   save();
   saveHistory();
+  loadConfig();
 }
 function save()        { localStorage.setItem(STORAGE_KEY,  JSON.stringify(orders)); }
 function saveHistory() { localStorage.setItem(HISTORY_KEY,  JSON.stringify(history_orders)); }
+function saveConfig()  { localStorage.setItem(CONFIG_KEY, JSON.stringify({ icrUrlTemplate, cncUrlTemplate })); }
+function loadConfig()  {
+  try { const s = localStorage.getItem(CONFIG_KEY); if (s) { const c = JSON.parse(s); icrUrlTemplate = c.icrUrlTemplate || ''; cncUrlTemplate = c.cncUrlTemplate || ''; } }
+  catch(e) { }
+  document.getElementById('icr-url-template').value = icrUrlTemplate;
+  document.getElementById('cnc-url-template').value = cncUrlTemplate;
+}
 function historyKB()   { return (JSON.stringify(history_orders).length / 1024).toFixed(1); }
 
 // ── Base36 ────────────────────────────────────────────────────────────────────
@@ -579,14 +656,19 @@ function normalizeDate(raw) {
   }
   return null;
 }
-// Extracts the digit run from an order reference (e.g. "CSA11106428" or
-// "CNC11062197A" -> "11106428" / "11062197") so an ICR line's sourceDocumentNo
-// can be matched against a customer order's `no`, regardless of CSA/CNC prefix
-// or trailing letter. Best-effort: unmatched refs just fall back to manual tagging.
+// Normalizes order reference to full reference format (prefix + digits + optional letter).
+// Matches CSA/CNC references by type and digits, case-insensitive, ignoring whitespace.
+// Returns { type:'CSA'|'CNC', normalized:string } or null if invalid.
+// Example: "CSA 11106428" -> {type:'CSA', normalized:'CSA11106428'}
+//          "CNC 11062197" -> {type:'CNC', normalized:'CNC11062197'}
 function normalizeDocRef(raw) {
   if (!raw) return null;
-  const m = String(raw).toUpperCase().match(/\d+/);
-  return m ? m[0] : null;
+  const str = String(raw).trim().toUpperCase().replace(/\s+/g,'');
+  const csa = str.match(/^CSA(\d+)([A-Z]?)$/);
+  if (csa) return { type:'CSA', normalized:'CSA'+csa[1]+(csa[2]||'') };
+  const cnc = str.match(/^CNC(\d+)$/);
+  if (cnc) return { type:'CNC', normalized:'CNC'+cnc[1] };
+  return null;
 }
 // csaOrders documentDate looks like "14.07.2026 13:55" — strip the time before
 // handing to normalizeDate, which already understands DD.MM.YYYY.
@@ -639,9 +721,9 @@ function mergeCncs(existingList, autoList) {
 
 // Parses the bookmarklet's combined JSON payload into buffer-shaped entries.
 // Attempts to link each ICR line's sourceDocumentNo to a customer order's `no`
-// via normalizeDocRef (digit-only match) — this linkage is best-effort and not
-// yet confirmed against a real overlapping pair, so unmatched lines are left
-// for the existing manual "+ CNC/CSA" clipboard flow rather than failing.
+// via normalizeDocRef (type-aware full reference match) — this linkage is
+// best-effort and not yet confirmed against a real overlapping pair, so
+// unmatched lines are left for the existing manual "+ CNC/CSA" clipboard flow.
 function parseJsonImport(payload) {
   const transferResult = (payload.transferOrders && payload.transferOrders.result) || [];
   const csaList = (payload.csaOrders && (payload.csaOrders.orders || payload.csaOrders.allOrders)) || [];
@@ -650,7 +732,7 @@ function parseJsonImport(payload) {
   const csaByNorm = {};
   customerOrders.forEach(function(o) {
     const norm = normalizeDocRef(o.no);
-    if (norm) csaByNorm[norm] = o;
+    if (norm && norm.type === 'CSA') csaByNorm[norm.normalized] = o;
   });
 
   let matchedCount = 0, sourceLineCount = 0;
@@ -662,7 +744,7 @@ function parseJsonImport(payload) {
       if (!l.sourceDocumentNo) return;
       sourceLineCount++;
       const norm = normalizeDocRef(l.sourceDocumentNo);
-      const csa = norm ? csaByNorm[norm] : null;
+      const csa = (norm && norm.type === 'CSA') ? csaByNorm[norm.normalized] : null;
       if (csa) {
         matchedCount++;
         matchedCncs.push({
@@ -733,11 +815,36 @@ function archiveOrder(id, reason) {
   delete archived.hasCustomerOrders;
   history_orders[id] = archived;
   delete orders[id];
+  // Track as session-archived so the row shows as dimmed/checked until reload
+  sessionArchivedIds.add(id);
 }
 
 // ── Commit import ─────────────────────────────────────────────────────────────
-function commitImport() {
-  if (!buffer.length) { showNotice('Buffer is empty \u2014 paste order data anywhere on the page first.', 'warning', 3000); return; }
+async function commitImport() {
+  // Try clipboard first if available
+  if (navigator.clipboard && navigator.clipboard.readText) {
+    try {
+      const clipText = await navigator.clipboard.readText();
+      if (clipText && clipText.trim().charAt(0) === '{') {
+        try {
+          const payload = JSON.parse(clipText.trim());
+          if (payload.transferOrders || payload.csaOrders) {
+            const { entries, matchStats } = parseJsonImport(payload);
+            if (entries.length) {
+              for (const o of entries) {
+                if (!buffer.find(function(b){ return b.id===o.id; })) buffer.push(o);
+              }
+              lastImportStats = matchStats;
+              updatePasteStatus();
+              showNotice('Parsed from clipboard: '+matchStats.icrs+' ICR(s), '+matchStats.matched+'/'+matchStats.sourceLines+' auto-linked.', 'info', 4000);
+            }
+          }
+        } catch(e) { }
+      }
+    } catch(e) { }
+  }
+
+  if (!buffer.length) { showNotice('Buffer is empty \u2014 paste order data anywhere on the page first or click Import to read clipboard.', 'warning', 3000); return; }
   const prevIds = new Set(Object.keys(orders));
   const newIds  = new Set(buffer.map(function(o){ return o.id; }));
   const disappeared        = [...prevIds].filter(function(id){ return !newIds.has(id); });
@@ -794,7 +901,6 @@ function renderStats() {
   const withCustomer=all.filter(function(o){ return o.hasCustomerOrders; }).length;
   const histCount=Object.keys(history_orders).length;
   document.getElementById('stats-row').innerHTML=
-    '<div class="stat-card"><div class="label">Active orders</div><div class="value">'+all.length+'</div></div>'+
     '<div class="stat-card"><div class="label">With customer orders</div><div class="value">'+withCustomer+'</div></div>'+
     '<div class="stat-card" style="padding:10px 14px;">'+
       '<div class="label">History ('+histCount+') \u2014 '+historyKB()+' KB</div>'+
@@ -805,11 +911,9 @@ function renderStats() {
     '</div>';
 }
 
-function thHtml(label, badge, filterKey, isActive) {
-  const badgeHtml = badge
-    ? '<span class="filter-badge">'+badge+'</span>'
-    : (label ? ' <span style="font-size:10px;opacity:.4;">&#9662;</span>' : '<span style="font-size:10px;opacity:.4;">&#9662;</span>');
-  return '<th class="filterable'+(isActive?' filter-active':'')+'" onclick="cycleFilter(\''+filterKey+'\')" title="Click to filter">'+label+badgeHtml+'</th>';
+function thHtml(label, colKey) {
+  const indicator = (sortBy === colKey) ? (sortAsc ? ' ▲' : ' ▼') : '';
+  return '<th style="cursor:pointer;" onclick="cycleSort(\''+colKey+'\')">'+label+indicator+'</th>';
 }
 
 function toggleSkuExpand(id) {
@@ -822,46 +926,93 @@ function archivalHistoryTitle(o) {
 }
 
 function renderTable() {
+  updateFilterButtons();
   const skuQ = document.getElementById('sku-search').value.trim().toLowerCase();
   const idQ  = document.getElementById('id-search').value.trim().toLowerCase();
-  let rows = Object.values(orders).map(function(o){ return Object.assign({},o,{_archived:false}); });
-  if (showHistory) rows = rows.concat(Object.values(history_orders).map(function(o){ return Object.assign({},o,{_archived:true}); }));
+
+  // Start with active orders and add pending archived (session-archived that are now in history)
+  let rows = Object.values(orders).map(function(o){ return Object.assign({},o,{_archived:false,_pending:false}); });
+  for (const id of sessionArchivedIds) {
+    if (history_orders[id]) {
+      rows.push(Object.assign({},history_orders[id],{_archived:false,_pending:true}));
+    }
+  }
+
+  // Add full history if toggled on
+  if (showHistory) {
+    rows = rows.concat(Object.values(history_orders).filter(function(o){ return !sessionArchivedIds.has(o.id); }).map(function(o){ return Object.assign({},o,{_archived:true,_pending:false}); }));
+  }
+
+  // Search filters
   if (skuQ) rows = rows.filter(function(o){
     return (o.skus&&o.skus.some(function(s){ return s.toLowerCase().includes(skuQ); }))||(o.cncs&&o.cncs.some(function(c){ return c.id.toLowerCase().includes(skuQ); }));
   });
   if (idQ) rows = rows.filter(function(o){ return o.id.toLowerCase().includes(idQ); });
 
-  // Column filters apply only to active rows
-  const active   = applyFilters(rows.filter(function(o){ return !o._archived; }));
+  // Column filters apply only to non-archived active rows
+  const activeBeforeFilter = rows.filter(function(o){ return !o._archived; });
+  const activeFiltered = applyFilters(activeBeforeFilter);
   const archived = rows.filter(function(o){ return o._archived; });
-  rows = active.concat(archived);
-  rows.sort(function(a,b){ return a.id.localeCompare(b.id); });
+  const filteredRows = activeFiltered.concat(archived);
 
-  const qtyActive = qtyFilter!=='all', skuActive=skuFilter!=='all', ageActive=ageFilter!=='all';
+  // Sorting
+  filteredRows.sort(function(a,b){
+    let aVal, bVal;
+    switch(sortBy) {
+      case 'id': aVal = a.id; bVal = b.id; break;
+      case 'qty': aVal = a.qty || 0; bVal = b.qty || 0; break;
+      case 'hasCustomerOrders': aVal = a.hasCustomerOrders ? 1 : 0; bVal = b.hasCustomerOrders ? 1 : 0; break;
+      case 'date':
+        aVal = a._archived ? (a.archivedAt || '9999') : earliestDate(a);
+        bVal = b._archived ? (b.archivedAt || '9999') : earliestDate(b);
+        aVal = aVal || '9999'; bVal = bVal || '9999';
+        break;
+      case 'skus': aVal = (a.skus||[]).length; bVal = (b.skus||[]).length; break;
+      case 'cncs': aVal = (a.cncs||[]).length; bVal = (b.cncs||[]).length; break;
+      case 'archivedAt': aVal = a.archivedAt || ''; bVal = b.archivedAt || ''; break;
+      default: aVal = a.id; bVal = b.id;
+    }
+    if (typeof aVal === 'string') return sortAsc ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
+    return sortAsc ? (aVal - bVal) : (bVal - aVal);
+  });
+
+  // Count shown vs total
+  const shownCount = activeFiltered.length;
+  const totalCount = Object.keys(orders).length;
+  const counterEl = document.getElementById('counter');
+  if (shownCount === totalCount) {
+    counterEl.innerHTML = '<span class="counter">'+shownCount+'</span>';
+  } else {
+    counterEl.innerHTML = '<span class="counter">'+shownCount+' <span class="total">('+totalCount+')</span></span>';
+  }
+
   const colsHtml = showHistory
     ? '<col class="c-id"><col class="c-qty"><col class="c-custord"><col class="c-date"><col class="c-skus"><col class="c-cnc"><col class="c-archived"><col class="c-action">'
     : '<col class="c-id"><col class="c-qty"><col class="c-custord"><col class="c-date"><col class="c-skus"><col class="c-cnc"><col class="c-action">';
   const totalCols = showHistory ? 8 : 7;
 
   let html = '<div class="table-wrap"><table>'+colsHtml+'<thead><tr>'+
-    '<th>Order ID</th>'+
-    thHtml(qtyActive ? '' : 'Lines', QTY_BADGES[qtyFilter], 'qty', qtyActive)+
+    thHtml('Order ID', 'id')+
+    thHtml('Lines', 'qty')+
     '<th>Order</th>'+
-    thHtml(ageActive ? '' : 'Date', AGE_BADGES[ageFilter], 'age', ageActive)+
-    thHtml('SKUs', SKU_BADGES[skuFilter], 'sku', skuActive)+
-    '<th>CNC / CSA</th>'+
-    (showHistory ? '<th style="color:var(--text3);font-weight:400;">Archived</th>' : '')+
+    thHtml('Date', 'date')+
+    thHtml('SKUs', 'skus')+
+    thHtml('CNC / CSA', 'cncs')+
+    (showHistory ? thHtml('Archived', 'archivedAt') : '')+
     '<th></th></tr></thead><tbody>';
 
-  if (!rows.length) {
+  if (!filteredRows.length) {
     html += '<tr class="empty-row"><td colspan="'+totalCols+'">No orders match your search or filters.</td></tr>';
   } else {
-    rows.forEach(function(o) {
+    filteredRows.forEach(function(o) {
       const hlSku = skuQ&&o.skus&&o.skus.some(function(s){ return s.toLowerCase().includes(skuQ); });
       const hlCnc = skuQ&&o.cncs&&o.cncs.some(function(c){ return c.id.toLowerCase().includes(skuQ); });
-      const rowClass = (hlSku||hlCnc)?'highlight':(o.id===copiedOrderId)?'selected-row':o._archived?'archived-row':'';
+      let rowClass = '';
+      if (hlSku||hlCnc) rowClass = 'highlight';
+      else if (o.id===copiedOrderId && !o._pending) rowClass = 'selected-row';
+      if (o._pending) rowClass += ' archived-row';
 
-      // Collapsed to 4 tags + "+N" by default; click the chip to expand this row.
+      // SKU tags
       const skuLines = (o.lines && o.lines.length) ? o.lines : (o.skus||[]).map(function(s){ return { sku:s, qty:null }; });
       const isExpanded = expandedSkuRows.has(o.id);
       const visibleLines = (!isExpanded && skuLines.length > 4) ? skuLines.slice(0,4) : skuLines;
@@ -877,8 +1028,7 @@ function renderTable() {
           : '<span class="sku-tag more-tag" onclick="toggleSkuExpand(\''+o.id+'\');event.stopPropagation()" title="Show all '+skuLines.length+'">+'+(skuLines.length-4)+'</span>';
       }
 
-      // Auto-linked cncs (source:'auto', from JSON import) show a check mark and a
-      // title with status/printed/date so the operator can see provenance at a glance.
+      // CNC tags
       const cncTags = (o.cncs||[]).map(function(c){
         const hl = skuQ&&c.id.toLowerCase().includes(skuQ)?' highlight':'';
         const printedMark = c.printed ? '\u2713 ' : '';
@@ -890,25 +1040,29 @@ function renderTable() {
         return '<span class="cnc-tag'+hl+'" onclick="copyTag(\''+c.id+'\');event.stopPropagation()" title="'+titleParts.join(' \u2014 ')+'">'+printedMark+c.id+'</span>';
       }).join('');
 
-      const removeBtn = o._archived
-        ? '<button class="remove-btn" onclick="confirmDeleteArchived(\''+o.id+'\');event.stopPropagation()" title="Delete from history">\u2715</button>'
-        : '<button class="remove-btn" onclick="confirmRemoveOrder(\''+o.id+'\');event.stopPropagation()" title="Archive order">\u2715</button>';
+      // Action cell: checkbox for active/pending, delete button for archived
+      let actionCell = '';
+      if (o._archived && !o._pending) {
+        actionCell = '<button class="remove-btn" onclick="confirmDeleteArchived(\''+o.id+'\');event.stopPropagation()" title="Delete from history">\u2715</button>';
+      } else {
+        const isChecked = o._pending ? ' checked' : '';
+        actionCell = '<input type="checkbox" class="archive-checkbox"'+isChecked+' onclick="archiveCheckboxClick(\''+o.id+'\');event.stopPropagation()" title="Archive order">';
+      }
 
-      // Single Date column: earliest of ICR date / linked CNC date / date imported.
-      // Full breakdown is in the tooltip so the individual origin dates aren't lost.
-      const dVal = earliestDate(o);
-      const dTitle = dateBreakdown(o) + (o._archived && o.archivalHistory && o.archivalHistory.length ? ' \u2014 Archived: '+archivalHistoryTitle(o) : '');
-      const dateCell = '<td class="rcvd-cell" title="'+dTitle+'" style="color:var(--text3);font-size:12px;">'+(dVal||'\u2014')+'</td>';
+      // Date cell
+      const dVal = o._archived ? (o.archivedAt || '\u2014') : (earliestDate(o) || '\u2014');
+      const dTitle = !o._archived ? dateBreakdown(o) : (o.archivalHistory && o.archivalHistory.length ? archivalHistoryTitle(o) : '');
+      const dateCell = '<td class="rcvd-cell" title="'+dTitle+'" style="color:var(--text3);font-size:12px;">'+dVal+'</td>';
 
       html += '<tr class="'+rowClass+'" onclick="selectRow(\''+o.id+'\')">'+
-        '<td class="order-id'+(o._archived?' archived-id':'')+'" onclick="copyOrderId(\''+o.id+'\');event.stopPropagation()" title="Click to copy">'+o.id+'</td>'+
+        '<td class="order-id'+(o._archived?' archived-id':'')+'" onclick="copyOrderId(\''+o.id+'\');event.stopPropagation()" title="Click to open or copy">'+o.id+'</td>'+
         '<td>'+o.qty+'</td>'+
         '<td><span class="badge '+(o.hasCustomerOrders?'yes':'no')+'">'+(o.hasCustomerOrders?'Yes':'No')+'</span></td>'+
         dateCell+
         '<td><div class="tags-cell">'+skuTags+'</div></td>'+
         '<td><div class="tags-cell">'+cncTags+'</div></td>'+
-        (showHistory ? '<td style="color:var(--text3);font-size:12px;" title="'+(o._archived?archivalHistoryTitle(o):'')+'">'+(o._archived?(o.archivedAt||'\u2014'):'')+'</td>' : '')+
-        '<td>'+removeBtn+'</td>'+
+        (showHistory ? '<td style="color:var(--text3);font-size:12px;">'+dVal+'</td>' : '')+
+        '<td style="text-align:center;">'+actionCell+'</td>'+
       '</tr>';
     });
   }
@@ -916,26 +1070,39 @@ function renderTable() {
   document.getElementById('table-container').innerHTML = html;
 }
 
+function archiveCheckboxClick(id) {
+  archiveOrder(id, 'manual');
+  save(); saveHistory(); renderTable();
+}
+
 function renderAll() { renderStats(); renderTable(); }
 function toggleHistory() { showHistory=!showHistory; renderAll(); }
 
 // ── Copy / select ─────────────────────────────────────────────────────────────
+function openUrl(template, id) {
+  if (!template) return false;
+  let url = template.includes('{id}') ? template.replace('{id}', id) : template + id;
+  window.open(url, '_blank');
+  return true;
+}
 async function copyTag(val) {
+  if (openUrl(cncUrlTemplate, val)) return;
   try { await navigator.clipboard.writeText(val); }
   catch(e) { const ta=document.createElement('textarea'); ta.value=val; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta); }
-  showNotice('Copied '+val+' to clipboard','info',2000);
+  if (!cncUrlTemplate) showNotice('Set a CNC/CSA URL in Settings to enable click-through','info',3000);
 }
 function selectRow(id) {
-  if (copiedOrderId === id) return; // already selected, no re-render needed
+  if (copiedOrderId === id) return;
   copiedOrderId = id;
   renderTable();
 }
 async function copyOrderId(id) {
   copiedOrderId=id;
+  renderTable();
+  if (openUrl(icrUrlTemplate, id)) return;
   try { await navigator.clipboard.writeText(id); }
   catch(e) { const ta=document.createElement('textarea'); ta.value=id; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta); }
-  renderTable();
-  showNotice('Copied '+id+' to clipboard','info',2000);
+  if (!icrUrlTemplate) showNotice('Set an ICR URL in Settings to enable click-through','info',3000);
 }
 
 // ── Remove / archive ──────────────────────────────────────────────────────────
@@ -1008,6 +1175,15 @@ document.getElementById('btn-export').addEventListener('click', doExport);
 document.getElementById('btn-copy-full').addEventListener('click', copyFullExport);
 document.getElementById('btn-import').addEventListener('click', doImport);
 document.getElementById('btn-clear-import').addEventListener('click', clearImportUI);
+
+document.getElementById('icr-url-template').addEventListener('change', function() {
+  icrUrlTemplate = this.value.trim();
+  saveConfig();
+});
+document.getElementById('cnc-url-template').addEventListener('change', function() {
+  cncUrlTemplate = this.value.trim();
+  saveConfig();
+});
 
 load();
 renderAll();
