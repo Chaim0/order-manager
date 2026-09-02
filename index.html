@@ -267,6 +267,11 @@
           <span id="import-status" style="font-size:12px;color:var(--text3);"></span>
         </div>
         <div id="scan-progress" style="margin-top:8px;font-size:12px;color:var(--text3);"></div>
+        <div style="margin-top:12px;border-top:0.5px solid var(--border);padding-top:12px;">
+          <div class="sync-label">ICR URL template (for click-to-open)</div>
+          <input type="text" id="icr-url-input" style="margin-top:6px;width:100%;" placeholder="e.g. https://example.com/icr/{id}">
+          <div style="font-size:11px;color:var(--text3);margin-top:4px;">Use {id} for order ID, or leave as is to append ID</div>
+        </div>
       </div>
     </div>
   </details>
@@ -302,6 +307,7 @@ const VERSION = 'v1.8.2';
 // ── Storage keys ──────────────────────────────────────────────────────────────
 const STORAGE_KEY  = 'order_manager_v1';
 const HISTORY_KEY  = 'order_manager_history_v1';
+const CONFIG_KEY   = 'order_manager_config_v1';
 
 let orders         = {};
 let history_orders = {};
@@ -313,6 +319,7 @@ let lastExportChunks = [];
 // SKU tag lists collapse to 4 + "+N" past that; toggling here expands a single
 // row for readability. Intentionally not persisted — resets on reload.
 let expandedSkuRows = new Set();
+let icrUrlTemplate = '';
 
 // ── Column filters ────────────────────────────────────────────────────────────
 let qtyFilter = 'le100'; // 'all' | 'le100' | 'gt100' — le100 is the common case, so it's the default
@@ -407,9 +414,16 @@ function load() {
   // rather than only whenever the next unrelated save() happens to fire.
   save();
   saveHistory();
+  loadConfig();
 }
 function save()        { localStorage.setItem(STORAGE_KEY,  JSON.stringify(orders)); }
 function saveHistory() { localStorage.setItem(HISTORY_KEY,  JSON.stringify(history_orders)); }
+function saveConfig()  { localStorage.setItem(CONFIG_KEY, JSON.stringify({ icrUrlTemplate })); }
+function loadConfig()  {
+  try { const s = localStorage.getItem(CONFIG_KEY); if (s) { const c = JSON.parse(s); icrUrlTemplate = c.icrUrlTemplate || ''; } }
+  catch(e) { }
+  if (document.getElementById('icr-url-input')) document.getElementById('icr-url-input').value = icrUrlTemplate;
+}
 function historyKB()   { return (JSON.stringify(history_orders).length / 1024).toFixed(1); }
 
 // ── Base36 ────────────────────────────────────────────────────────────────────
@@ -932,10 +946,16 @@ function selectRow(id) {
 }
 async function copyOrderId(id) {
   copiedOrderId=id;
-  try { await navigator.clipboard.writeText(id); }
-  catch(e) { const ta=document.createElement('textarea'); ta.value=id; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta); }
-  renderTable();
-  showNotice('Copied '+id+' to clipboard','info',2000);
+  if (icrUrlTemplate) {
+    const url = icrUrlTemplate.includes('{id}') ? icrUrlTemplate.replace('{id}', id) : icrUrlTemplate + id;
+    window.open(url, '_blank');
+    renderTable();
+  } else {
+    try { await navigator.clipboard.writeText(id); }
+    catch(e) { const ta=document.createElement('textarea'); ta.value=id; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta); }
+    renderTable();
+    showNotice('Copied '+id+' to clipboard','info',2000);
+  }
 }
 
 // ── Remove / archive ──────────────────────────────────────────────────────────
@@ -1008,6 +1028,11 @@ document.getElementById('btn-export').addEventListener('click', doExport);
 document.getElementById('btn-copy-full').addEventListener('click', copyFullExport);
 document.getElementById('btn-import').addEventListener('click', doImport);
 document.getElementById('btn-clear-import').addEventListener('click', clearImportUI);
+
+document.getElementById('icr-url-input').addEventListener('change', function() {
+  icrUrlTemplate = this.value.trim();
+  saveConfig();
+});
 
 load();
 renderAll();
